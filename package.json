@@ -1,0 +1,78 @@
+{
+  "name": "@openadam/state-machine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A deterministic, side-effect-free state transition kernel with CLI, MCP, and a visual editor and simulator.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "openAdam",
+    "url": "https://github.com/tetracoralla"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "state-machine": "./dist/node/adapters/cli.js",
+    "state-machine-mcp": "./dist/node/adapters/mcp.js",
+    "state-machine-ui": "./dist/node/adapters/web-server.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs",
+    "schemas",
+    "examples",
+    "plugins/state-machine",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "npm run clean && npm run build:node && npm run build:ui && npm run build:plugin",
+    "build:node": "tsc -p tsconfig.build.json",
+    "build:ui": "vite build",
+    "build:plugin": "esbuild src/adapters/mcp.ts --bundle --platform=node --target=node22 --format=esm --outfile=plugins/state-machine/server/index.mjs",
+    "check": "npm run typecheck && npm run test && npm run check:schemas && npm run check:clean-safety && npm run build && npm run test:runtime && npm run test:ui && npm run check:contracts && npm run check:plugin",
+    "check:clean-safety": "node scripts/check-clean-safety.mjs",
+    "check:contracts": "node scripts/check-contracts.mjs",
+    "check:plugin": "node scripts/check-plugin.mjs",
+    "check:schemas": "node --import tsx scripts/generate-schemas.ts --check",
+    "clean": "node scripts/clean.mjs",
+    "cli": "node dist/node/adapters/cli.js",
+    "dev:ui": "vite",
+    "generate:schemas": "node --import tsx scripts/generate-schemas.ts",
+    "mcp": "node dist/node/adapters/mcp.js",
+    "start:ui": "node dist/node/adapters/web-server.js",
+    "test": "vitest run --no-file-parallelism",
+    "test:runtime": "vitest run --no-file-parallelism --config vitest.runtime.config.ts",
+    "test:ui": "playwright test",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.ui.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "yaml": "2.8.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@playwright/test": "1.62.1",
+    "@types/node": "26.2.0",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "@vitejs/plugin-react": "5.0.2",
+    "esbuild": "^0.28.2",
+    "happy-dom": "^20.11.2",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2",
+    "vite": "7.3.6",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,0 +1,14 @@
+- event:
+    type: PAYMENT_SUCCESS
+    payload:
+      amount: 128
+      payment_id: pay_1024
+  guard_results:
+    payment_amount_matches: true
+- event:
+    type: START_FULFILLMENT
+- event:
+    type: SHIP
+- event:
+    type: CANCEL
+

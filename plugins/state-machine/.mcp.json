@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "state_machine": {
+      "command": "node",
+      "args": ["./server/index.mjs"],
+      "cwd": "."
+    }
+  }
+}
