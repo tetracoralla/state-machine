@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { findPath } from "../../core/graph.js";
+import { codeUnitCompare } from "../../model/ordering.js";
 import type { MachineSpec, OperationError, PathResult } from "../../model/types.js";
 
 interface TopologyGraphProps {
@@ -18,10 +19,6 @@ const NODE_HEIGHT = 58;
 const COLUMN_GAP = 108;
 const ROW_GAP = 56;
 const PADDING = 56;
-
-function codeUnitCompare(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function graphLayout(machine: MachineSpec) {
   const levels = new Map<string, number>([[machine.initial, 0]]);
@@ -94,6 +91,13 @@ export function TopologyGraph({ machine, currentState }: TopologyGraphProps) {
   const [target, setTarget] = useState(stateIds.find((id) => machine.states[id]?.final) ?? stateIds[0] ?? "");
   const [path, setPath] = useState<PathResult | OperationError | null>(null);
   const layout = useMemo(() => graphLayout(machine), [machine]);
+  const transitions = useMemo(
+    () =>
+      Object.entries(machine.states).flatMap(([from, state]) =>
+        Object.entries(state.on ?? {}).map(([event, transition]) => ({ from, event, transition })),
+      ),
+    [machine],
+  );
 
   useEffect(() => {
     if (!machine.states[target]) setTarget(stateIds.find((id) => machine.states[id]?.final) ?? stateIds[0] ?? "");
@@ -104,10 +108,6 @@ export function TopologyGraph({ machine, currentState }: TopologyGraphProps) {
     const result = findPath({ machine, from: currentState, target });
     setPath(result);
   }
-
-  const transitions = Object.entries(machine.states).flatMap(([from, state]) =>
-    Object.entries(state.on ?? {}).map(([event, transition]) => ({ from, event, transition })),
-  );
 
   return (
     <section className="panel topology-panel" aria-labelledby="topology-title">

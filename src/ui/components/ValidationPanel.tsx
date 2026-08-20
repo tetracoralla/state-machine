@@ -22,6 +22,11 @@ export function ValidationPanel({ validation }: ValidationPanelProps) {
               <code>{diagnostic.path}</code>
             </li>
           ))}
+          {validation.diagnostics.length > 8 && (
+            <li className="diagnostic diagnostic-overflow">
+              <span>{validation.diagnostics.length - 8} more diagnostic{validation.diagnostics.length - 8 === 1 ? "" : "s"} not shown</span>
+            </li>
+          )}
         </ol>
       )}
     </section>

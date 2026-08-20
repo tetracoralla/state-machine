@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,7 +46,12 @@ export function runWebServer(argv = process.argv) {
         "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'",
         "X-Content-Type-Options": "nosniff",
       });
-      createReadStream(target).pipe(response);
+      const stream = createReadStream(target);
+      stream.on("error", () => {
+        if (!response.headersSent) response.writeHead(500);
+        response.end();
+      });
+      stream.pipe(response);
     } catch {
       response.writeHead(404).end("Not found");
     }
@@ -55,5 +60,14 @@ export function runWebServer(argv = process.argv) {
   return server;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) runWebServer();
+function isDirectEntry(): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectEntry()) runWebServer();
 

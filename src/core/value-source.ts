@@ -1,6 +1,5 @@
 import type { EventInstance, JsonObject, JsonValue, Snapshot, ValueSource } from "../model/types.js";
-
-const RESERVED_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
+import { RESERVED_SEGMENTS } from "../model/ordering.js";
 
 function cloneJson<T extends JsonValue>(value: T): T {
   if (Array.isArray(value)) return value.map((item) => cloneJson(item)) as T;
@@ -13,9 +12,10 @@ function cloneJson<T extends JsonValue>(value: T): T {
 function readPath(root: JsonObject, path: string): JsonValue | undefined {
   let current: JsonValue = root;
   for (const segment of path.split(".")) {
-    if (RESERVED_SEGMENTS.has(segment) || current === null || typeof current !== "object" || Array.isArray(current)) {
+    if (RESERVED_SEGMENTS.includes(segment) || current === null || typeof current !== "object" || Array.isArray(current)) {
       return undefined;
     }
+    if (!Object.hasOwn(current, segment)) return undefined;
     current = current[segment] as JsonValue;
     if (current === undefined) return undefined;
   }

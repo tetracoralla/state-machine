@@ -348,6 +348,11 @@ summary:focus-visible {
   border-bottom: 0;
 }
 
+.diagnostic-overflow {
+  grid-template-columns: 1fr;
+  color: var(--muted);
+}
+
 .diagnostic-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;

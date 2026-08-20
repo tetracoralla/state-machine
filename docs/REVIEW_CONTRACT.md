@@ -19,6 +19,8 @@ followed by a blocked event and with one event near the cumulative complexity
 limit. Inputs above the declared limits and unknown fields must fail before
 execution. The complete six-tool catalog must remain at or below 36 KiB. Built
 CLI operation errors must exit `1`; command and file usage errors must exit `2`.
+Unknown, duplicate, missing-value, and out-of-range CLI options must fail as
+usage errors rather than being ignored or reaching the kernel.
 
 ## Runtime human flow
 
@@ -27,7 +29,9 @@ allowed event, run a guarded event both rejected and accepted, inspect the trace
 including resolved context changes and effect inputs, reload to confirm the
 draft persists, and verify import/export or reset recovery. Invalid semantic
 machines must expose path-operation failures rather than silently discarding
-them. Inspect narrow, medium, and wide layouts.
+them. A malformed import must preserve the current draft, and unavailable local
+storage must leave editing usable while showing the reload-loss risk. Inspect
+narrow, medium, and wide layouts.
 
 ## Business/experience acceptance
 

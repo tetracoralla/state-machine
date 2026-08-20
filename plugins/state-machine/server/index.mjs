@@ -20279,6 +20279,12 @@ function toError(value) {
   return value instanceof Error ? value : new Error(String(value));
 }
 
+// src/model/ordering.ts
+var RESERVED_SEGMENTS = ["__proto__", "prototype", "constructor"];
+function codeUnitCompare(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 // src/model/schemas.ts
 var MODEL_LIMITS = Object.freeze({
   maxRequestBytes: 256 * 1024,
@@ -20299,8 +20305,8 @@ var MODEL_LIMITS = Object.freeze({
   maxDiffChanges: 500
 });
 var IdentifierSchema = string2().min(1).max(64).regex(/^[A-Za-z][A-Za-z0-9_-]*$/, "Expected a letter followed by letters, digits, underscores, or hyphens.");
-var ValuePathSchema = string2().min(1).max(256).regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/, "Expected a dot-delimited value path.").refine(
-  (path) => !path.split(".").some((segment) => ["__proto__", "prototype", "constructor"].includes(segment)),
+var ValuePathSchema = string2().min(1).max(256).regex(/^[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z][A-Za-z0-9_-]*)*$/, "Expected a dot-delimited value path of identifier segments.").refine(
+  (path) => !path.split(".").some((segment) => RESERVED_SEGMENTS.includes(segment)),
   "Value path contains a reserved unsafe segment."
 );
 var BoundedStringSchema = string2().max(MODEL_LIMITS.maxStringLength);
@@ -20326,7 +20332,8 @@ function jsonValuesWithinLimits(values) {
     if (Array.isArray(current.value)) {
       for (const child of current.value) pending.push({ value: child, depth: current.depth + 1 });
     } else if (current.value !== null && typeof current.value === "object") {
-      for (const child of Object.values(current.value)) {
+      for (const [key, child] of Object.entries(current.value)) {
+        if (key === "__proto__") return false;
         pending.push({ value: child, depth: current.depth + 1 });
       }
     }
@@ -20490,17 +20497,18 @@ var DiagnosticSchema = strictObject({
   message: string2(),
   path: string2()
 });
+var MachineStatsSchema = strictObject({
+  states: number2().int(),
+  events: number2().int(),
+  guards: number2().int(),
+  transitions: number2().int(),
+  final_states: number2().int()
+});
 var ValidationResultSchema = strictObject({
   status: _enum(["valid", "invalid"]),
   machine_id: string2().optional(),
   diagnostics: array(DiagnosticSchema),
-  stats: strictObject({
-    states: number2().int(),
-    events: number2().int(),
-    guards: number2().int(),
-    transitions: number2().int(),
-    final_states: number2().int()
-  }).optional()
+  stats: MachineStatsSchema.optional()
 });
 var OperationErrorSchema = strictObject({
   status: literal("error"),
@@ -20564,13 +20572,7 @@ var InspectResultSchema = union([
     events: array(string2()),
     guards: array(string2()),
     transitions: array(strictObject({ from: string2(), event: string2(), to: string2(), guard: string2().nullable() })),
-    stats: strictObject({
-      states: number2().int(),
-      events: number2().int(),
-      guards: number2().int(),
-      transitions: number2().int(),
-      final_states: number2().int()
-    }),
+    stats: MachineStatsSchema,
     limits: record(string2(), number2())
   }),
   OperationErrorSchema
@@ -20591,10 +20593,23 @@ var DiffResultSchema = union([
   OperationErrorSchema
 ]);
 
-// src/core/validation.ts
-function codeUnitCompare(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0;
+// src/core/operation-error.ts
+function inputError(message) {
+  return { status: "error", error: { code: "INPUT_INVALID", message } };
 }
+function machineError(details) {
+  return {
+    status: "error",
+    error: { code: "MACHINE_INVALID", message: "Machine failed semantic validation.", details }
+  };
+}
+function runtimeError(code, message, details) {
+  const error2 = { code, message };
+  if (details && details.length > 0) error2.details = details;
+  return { status: "error", error: error2 };
+}
+
+// src/core/validation.ts
 function zodPath(path) {
   if (path.length === 0) return "$";
   return `$${path.map((part) => typeof part === "number" ? `[${part}]` : `.${String(part)}`).join("")}`;
@@ -20635,7 +20650,7 @@ function matchesField(value, field) {
 function validateFields(value, fields, basePath) {
   const diagnostics = [];
   for (const name of Object.keys(value).sort(codeUnitCompare)) {
-    if (!fields[name]) {
+    if (!Object.hasOwn(fields, name)) {
       diagnostics.push({
         severity: "error",
         code: "FIELD_UNDECLARED",
@@ -20645,7 +20660,7 @@ function validateFields(value, fields, basePath) {
     }
   }
   for (const [name, field] of Object.entries(fields).sort(([left], [right]) => codeUnitCompare(left, right))) {
-    const current = value[name];
+    const current = Object.hasOwn(value, name) ? value[name] : void 0;
     if (current === void 0) {
       if (field.required !== false) {
         diagnostics.push({
@@ -20683,7 +20698,7 @@ function sourceType(diagnostics, source, path, eventFields, contextFields) {
   if (source.kind === "literal") return literalType(source);
   const fields = source.kind === "event" ? eventFields : contextFields;
   const first = firstPathSegment(source);
-  const field = first ? fields[first] : void 0;
+  const field = first && Object.hasOwn(fields, first) ? fields[first] : void 0;
   if (!first || !field) return "unknown";
   if (source.path.includes(".")) {
     if (field.type !== "object") {
@@ -20706,7 +20721,7 @@ function assignmentTypesCompatible(target, source) {
 function checkValueSource(diagnostics, source, path, eventFields, contextFields) {
   const first = firstPathSegment(source);
   if (!first) return sourceType(diagnostics, source, path, eventFields, contextFields);
-  if (source.kind === "event" && !eventFields[first]) {
+  if (source.kind === "event" && !Object.hasOwn(eventFields, first)) {
     diagnostics.push({
       severity: "error",
       code: "EVENT_VALUE_UNDECLARED",
@@ -20714,7 +20729,7 @@ function checkValueSource(diagnostics, source, path, eventFields, contextFields)
       path
     });
   }
-  if (source.kind === "context" && !contextFields[first]) {
+  if (source.kind === "context" && !Object.hasOwn(contextFields, first)) {
     diagnostics.push({
       severity: "error",
       code: "CONTEXT_VALUE_UNDECLARED",
@@ -20729,9 +20744,9 @@ function structurallyReachable(machine, start) {
   const queue = [start];
   while (queue.length > 0) {
     const stateId = queue.shift();
-    if (!stateId || visited.has(stateId) || !machine.states[stateId]) continue;
+    if (!stateId || visited.has(stateId) || !Object.hasOwn(machine.states, stateId)) continue;
     visited.add(stateId);
-    const targets = Object.values(machine.states[stateId].on ?? {}).map((transition) => transition.target).sort(codeUnitCompare);
+    const targets = Object.values(machine.states[stateId]?.on ?? {}).map((transition) => transition.target).sort(codeUnitCompare);
     queue.push(...targets);
   }
   return visited;
@@ -20755,10 +20770,12 @@ function statesThatCanReachFinal(machine) {
 function validateMachine(input) {
   const parsed = MachineSpecSchema.safeParse(input);
   if (!parsed.success) return { status: "invalid", diagnostics: schemaDiagnostics(parsed.error) };
-  const machine = parsed.data;
+  return validateParsedMachine(parsed.data);
+}
+function validateParsedMachine(machine) {
   const diagnostics = [];
   const contextFields = machine.context?.schema ?? {};
-  if (!machine.states[machine.initial]) {
+  if (!Object.hasOwn(machine.states, machine.initial)) {
     diagnostics.push({
       severity: "error",
       code: "INITIAL_STATE_UNKNOWN",
@@ -20790,7 +20807,7 @@ function validateMachine(input) {
     for (const [eventName, transition] of Object.entries(transitions).sort(([left], [right]) => codeUnitCompare(left, right))) {
       usedEvents.add(eventName);
       const transitionPath = `$.states.${stateId}.on.${eventName}`;
-      const eventDefinition = machine.events[eventName];
+      const eventDefinition = Object.hasOwn(machine.events, eventName) ? machine.events[eventName] : void 0;
       if (!eventDefinition) {
         diagnostics.push({
           severity: "error",
@@ -20799,7 +20816,7 @@ function validateMachine(input) {
           path: transitionPath
         });
       }
-      if (!machine.states[transition.target]) {
+      if (!Object.hasOwn(machine.states, transition.target)) {
         diagnostics.push({
           severity: "error",
           code: "TARGET_STATE_UNKNOWN",
@@ -20809,7 +20826,7 @@ function validateMachine(input) {
       }
       if (transition.guard) {
         usedGuards.add(transition.guard);
-        if (!machine.guards?.[transition.guard]) {
+        if (!(machine.guards && Object.hasOwn(machine.guards, transition.guard))) {
           diagnostics.push({
             severity: "error",
             code: "GUARD_UNKNOWN",
@@ -20820,7 +20837,7 @@ function validateMachine(input) {
       }
       const eventFields = eventDefinition?.fields ?? {};
       for (const [fieldName, source] of Object.entries(transition.assign ?? {})) {
-        const targetField = contextFields[fieldName];
+        const targetField = Object.hasOwn(contextFields, fieldName) ? contextFields[fieldName] : void 0;
         if (!targetField) {
           diagnostics.push({
             severity: "error",
@@ -20873,7 +20890,7 @@ function validateMachine(input) {
       });
     }
   }
-  if (machine.states[machine.initial]) {
+  if (Object.hasOwn(machine.states, machine.initial)) {
     const reachable = structurallyReachable(machine, machine.initial);
     for (const stateId of Object.keys(machine.states).sort(codeUnitCompare)) {
       if (!reachable.has(stateId)) {
@@ -20908,9 +20925,6 @@ function validateMachine(input) {
 }
 
 // src/core/diff.ts
-function codeUnitCompare2(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -20930,19 +20944,21 @@ function collectChanges(before, after, path, changes) {
     return;
   }
   if (isRecord(before) && isRecord(after)) {
-    const keys = [.../* @__PURE__ */ new Set([...Object.keys(before), ...Object.keys(after)])].sort(codeUnitCompare2);
+    const keys = [.../* @__PURE__ */ new Set([...Object.keys(before), ...Object.keys(after)])].sort(codeUnitCompare);
     for (const key of keys) collectChanges(before[key], after[key], `${path}.${key}`, changes);
     return;
   }
-  if (!Object.is(before, after)) changes.push({ kind: "changed", path, before, after });
+  if (!(before === after || before === 0 && after === 0)) {
+    changes.push({ kind: "changed", path, before, after });
+  }
 }
 function diffMachines(input) {
   const parsed = DiffRequestSchema.safeParse(input);
-  if (!parsed.success) return { status: "error", error: { code: "INPUT_INVALID", message: parsed.error.issues[0]?.message ?? "Diff request is invalid." } };
+  if (!parsed.success) return inputError(parsed.error.issues[0]?.message ?? "Diff request is invalid.");
   const before = parsed.data.before;
   const after = parsed.data.after;
-  const beforeValidation = validateMachine(before);
-  const afterValidation = validateMachine(after);
+  const beforeValidation = validateParsedMachine(before);
+  const afterValidation = validateParsedMachine(after);
   if (beforeValidation.status === "invalid" || afterValidation.status === "invalid") {
     return {
       status: "error",
@@ -20963,15 +20979,13 @@ function diffMachines(input) {
 }
 
 // src/core/graph.ts
-function codeUnitCompare3(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 function invalidMachine(machine) {
-  const validation = validateMachine(machine);
-  return validation.status === "invalid" ? { status: "error", error: { code: "MACHINE_INVALID", message: "Machine failed semantic validation.", details: validation.diagnostics } } : null;
+  const validation = validateParsedMachine(machine);
+  return validation.status === "invalid" ? machineError(validation.diagnostics) : null;
 }
 function outgoing(machine, state) {
-  return Object.entries(machine.states[state]?.on ?? {}).sort(([left], [right]) => codeUnitCompare3(left, right)).map(([event, transition]) => ({
+  const on = Object.hasOwn(machine.states, state) ? machine.states[state]?.on : void 0;
+  return Object.entries(on ?? {}).sort(([left], [right]) => codeUnitCompare(left, right)).map(([event, transition]) => ({
     from: state,
     event,
     to: transition.target,
@@ -20980,13 +20994,17 @@ function outgoing(machine, state) {
 }
 function findPath(input) {
   const parsed = PathRequestSchema.safeParse(input);
-  if (!parsed.success) return { status: "error", error: { code: "INPUT_INVALID", message: parsed.error.issues[0]?.message ?? "Path request is invalid." } };
+  if (!parsed.success) return inputError(parsed.error.issues[0]?.message ?? "Path request is invalid.");
   const request = parsed.data;
   const failure = invalidMachine(request.machine);
   if (failure) return failure;
   const from = request.from ?? request.machine.initial;
-  if (!request.machine.states[from]) return { status: "error", error: { code: "START_STATE_UNKNOWN", message: `State '${from}' does not exist.` } };
-  if (!request.machine.states[request.target]) return { status: "error", error: { code: "TARGET_STATE_UNKNOWN", message: `State '${request.target}' does not exist.` } };
+  if (!Object.hasOwn(request.machine.states, from)) {
+    return { status: "error", error: { code: "START_STATE_UNKNOWN", message: `State '${from}' does not exist.` } };
+  }
+  if (!Object.hasOwn(request.machine.states, request.target)) {
+    return { status: "error", error: { code: "TARGET_STATE_UNKNOWN", message: `State '${request.target}' does not exist.` } };
+  }
   const maxDepth = request.max_depth ?? MODEL_LIMITS.maxPathDepth;
   const queue = [{ state: from, steps: [] }];
   const bestDepth = /* @__PURE__ */ new Map([[from, 0]]);
@@ -20999,7 +21017,7 @@ function findPath(input) {
         from,
         target: request.target,
         steps: current.steps,
-        required_guards: [...new Set(current.steps.flatMap((step) => step.guard ? [step.guard] : []))].sort(codeUnitCompare3)
+        required_guards: [...new Set(current.steps.flatMap((step) => step.guard ? [step.guard] : []))].sort(codeUnitCompare)
       };
     }
     if (current.steps.length >= maxDepth) continue;
@@ -21015,28 +21033,26 @@ function findPath(input) {
 }
 
 // src/core/inspect.ts
-function codeUnitCompare4(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 function inspectMachine(input) {
   const parsed = MachineSpecSchema.safeParse(input);
-  if (!parsed.success) return { status: "error", error: { code: "INPUT_INVALID", message: parsed.error.issues[0]?.message ?? "Machine is invalid." } };
+  if (!parsed.success) return inputError(parsed.error.issues[0]?.message ?? "Machine is invalid.");
   const machine = parsed.data;
-  const validation = validateMachine(machine);
+  const validation = validateParsedMachine(machine);
   if (validation.status === "invalid") {
-    return { status: "error", error: { code: "MACHINE_INVALID", message: "Machine failed semantic validation.", details: validation.diagnostics } };
+    return machineError(validation.diagnostics);
   }
-  const states = Object.entries(machine.states).sort(([left], [right]) => codeUnitCompare4(left, right)).map(([id, state]) => ({ id, title: state.title ?? null, final: state.final === true }));
-  const transitions = Object.entries(machine.states).sort(([left], [right]) => codeUnitCompare4(left, right)).flatMap(
-    ([from, state]) => Object.entries(state.on ?? {}).sort(([left], [right]) => codeUnitCompare4(left, right)).map(([event, transition]) => ({ from, event, to: transition.target, guard: transition.guard ?? null }))
+  const stateEntries = Object.entries(machine.states).sort(([left], [right]) => codeUnitCompare(left, right));
+  const states = stateEntries.map(([id, state]) => ({ id, title: state.title ?? null, final: state.final === true }));
+  const transitions = stateEntries.flatMap(
+    ([from, state]) => Object.entries(state.on ?? {}).sort(([left], [right]) => codeUnitCompare(left, right)).map(([event, transition]) => ({ from, event, to: transition.target, guard: transition.guard ?? null }))
   );
   return {
     status: "ok",
     machine_id: machine.id,
     initial: machine.initial,
     states,
-    events: Object.keys(machine.events).sort(codeUnitCompare4),
-    guards: Object.keys(machine.guards ?? {}).sort(codeUnitCompare4),
+    events: Object.keys(machine.events).sort(codeUnitCompare),
+    guards: Object.keys(machine.guards ?? {}).sort(codeUnitCompare),
     transitions,
     stats: machineStats(machine),
     limits: { ...MODEL_LIMITS }
@@ -21044,7 +21060,6 @@ function inspectMachine(input) {
 }
 
 // src/core/value-source.ts
-var RESERVED_SEGMENTS = /* @__PURE__ */ new Set(["__proto__", "prototype", "constructor"]);
 function cloneJson(value) {
   if (Array.isArray(value)) return value.map((item) => cloneJson(item));
   if (value !== null && typeof value === "object") {
@@ -21055,9 +21070,10 @@ function cloneJson(value) {
 function readPath(root, path) {
   let current = root;
   for (const segment of path.split(".")) {
-    if (RESERVED_SEGMENTS.has(segment) || current === null || typeof current !== "object" || Array.isArray(current)) {
+    if (RESERVED_SEGMENTS.includes(segment) || current === null || typeof current !== "object" || Array.isArray(current)) {
       return void 0;
     }
+    if (!Object.hasOwn(current, segment)) return void 0;
     current = current[segment];
     if (current === void 0) return void 0;
   }
@@ -21074,31 +21090,15 @@ function cloneObject(value) {
 }
 
 // src/core/step.ts
-function codeUnitCompare5(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-function inputError(message) {
-  return { status: "error", error: { code: "INPUT_INVALID", message } };
-}
-function machineError(details) {
-  return {
-    status: "error",
-    error: { code: "MACHINE_INVALID", message: "Machine failed semantic validation.", details }
-  };
-}
-function runtimeError(code, message, details) {
-  const error2 = { code, message };
-  if (details && details.length > 0) error2.details = details;
-  return { status: "error", error: error2 };
-}
 function initialSnapshot(machine) {
   return { state: machine.initial, context: cloneObject(machine.context?.initial ?? {}) };
 }
 function enabledEvents(machine, state) {
-  return Object.keys(machine.states[state]?.on ?? {}).sort(codeUnitCompare5);
+  const on = Object.hasOwn(machine.states, state) ? machine.states[state]?.on : void 0;
+  return Object.keys(on ?? {}).sort(codeUnitCompare);
 }
 function validateSnapshotForMachine(machine, snapshot) {
-  if (!machine.states[snapshot.state]) {
+  if (!Object.hasOwn(machine.states, snapshot.state)) {
     return runtimeError("SNAPSHOT_STATE_UNKNOWN", `Snapshot state '${snapshot.state}' does not exist.`);
   }
   const contextDiagnostics = validateFields(snapshot.context, machine.context?.schema ?? {}, "$.snapshot.context");
@@ -21108,7 +21108,7 @@ function validateSnapshotForMachine(machine, snapshot) {
   return null;
 }
 function validateEventPayload(machine, event) {
-  const eventDefinition = machine.events[event.type];
+  const eventDefinition = Object.hasOwn(machine.events, event.type) ? machine.events[event.type] : void 0;
   if (!eventDefinition) return runtimeError("EVENT_UNKNOWN", `Event '${event.type}' is not declared.`);
   const payloadDiagnostics = validateFields(event.payload ?? {}, eventDefinition.fields ?? {}, "$.event.payload");
   if (payloadDiagnostics.some((diagnostic) => diagnostic.severity === "error")) {
@@ -21118,7 +21118,7 @@ function validateEventPayload(machine, event) {
 }
 function resolveRecord(sources, snapshot, event, path) {
   const output = {};
-  for (const [name, source] of Object.entries(sources).sort(([left], [right]) => codeUnitCompare5(left, right))) {
+  for (const [name, source] of Object.entries(sources).sort(([left], [right]) => codeUnitCompare(left, right))) {
     const resolved = resolveValueSource(source, snapshot, event);
     if (!resolved.found || resolved.value === void 0) {
       return { ok: false, error: runtimeError("VALUE_NOT_FOUND", `Value source at '${path}.${name}' did not resolve.`) };
@@ -21128,7 +21128,9 @@ function resolveRecord(sources, snapshot, event, path) {
   return { ok: true, value: output };
 }
 function resolveEffects(machine, state, event, snapshot) {
-  const effects = machine.states[state]?.on?.[event.type]?.effects ?? [];
+  const on = Object.hasOwn(machine.states, state) ? machine.states[state]?.on : void 0;
+  const transition = on && Object.hasOwn(on, event.type) ? on[event.type] : void 0;
+  const effects = transition?.effects ?? [];
   const output = [];
   for (let index = 0; index < effects.length; index += 1) {
     const effect = effects[index];
@@ -21147,8 +21149,10 @@ function stepValidatedMachine(machine, inputSnapshot, inputEvent, guardResults) 
   };
   const snapshotFailure = validateSnapshotForMachine(machine, snapshot);
   if (snapshotFailure) return snapshotFailure;
-  if (!machine.events[event.type]) return runtimeError("EVENT_UNKNOWN", `Event '${event.type}' is not declared.`);
-  const transition = machine.states[snapshot.state]?.on?.[event.type];
+  if (!Object.hasOwn(machine.events, event.type)) return runtimeError("EVENT_UNKNOWN", `Event '${event.type}' is not declared.`);
+  const stateDefinition = Object.hasOwn(machine.states, snapshot.state) ? machine.states[snapshot.state] : void 0;
+  const on = stateDefinition?.on;
+  const transition = on && Object.hasOwn(on, event.type) ? on[event.type] : void 0;
   const base = {
     status: "ok",
     before: snapshot,
@@ -21163,10 +21167,12 @@ function stepValidatedMachine(machine, inputSnapshot, inputEvent, guardResults) 
   const payloadFailure = validateEventPayload(machine, event);
   if (payloadFailure) return payloadFailure;
   for (const guardName of Object.keys(guardResults ?? {})) {
-    if (!machine.guards?.[guardName]) return runtimeError("GUARD_RESULT_UNKNOWN", `Guard result '${guardName}' is not declared.`);
+    if (!(machine.guards && Object.hasOwn(machine.guards, guardName))) {
+      return runtimeError("GUARD_RESULT_UNKNOWN", `Guard result '${guardName}' is not declared.`);
+    }
   }
   if (transition.guard) {
-    const outcome = guardResults?.[transition.guard];
+    const outcome = guardResults && Object.hasOwn(guardResults, transition.guard) ? guardResults[transition.guard] : void 0;
     const guards = [{ name: transition.guard, outcome: outcome ?? null }];
     if (outcome === void 0) return { ...base, guards, accepted: false, reason: "GUARD_RESULT_REQUIRED" };
     if (!outcome) return { ...base, guards, accepted: false, reason: "GUARD_REJECTED" };
@@ -21196,7 +21202,7 @@ function stepMachine(input) {
   const parsed = StepRequestSchema.safeParse(input);
   if (!parsed.success) return inputError(parsed.error.issues[0]?.message ?? "Step request is invalid.");
   const request = parsed.data;
-  const validation = validateMachine(request.machine);
+  const validation = validateParsedMachine(request.machine);
   if (validation.status === "invalid") return machineError(validation.diagnostics);
   const snapshot = request.snapshot ?? initialSnapshot(request.machine);
   return stepValidatedMachine(request.machine, snapshot, request.event, request.guard_results);
@@ -21209,12 +21215,9 @@ function simulateMachine(input) {
     return { status: "error", error: { code: "INPUT_INVALID", message: parsed.error.issues[0]?.message ?? "Simulation request is invalid." } };
   }
   const request = parsed.data;
-  const validation = validateMachine(request.machine);
+  const validation = validateParsedMachine(request.machine);
   if (validation.status === "invalid") {
-    return {
-      status: "error",
-      error: { code: "MACHINE_INVALID", message: "Machine failed semantic validation.", details: validation.diagnostics }
-    };
+    return machineError(validation.diagnostics);
   }
   const initial = request.snapshot ? { state: request.snapshot.state, context: cloneObject(request.snapshot.context) } : initialSnapshot(request.machine);
   const snapshotFailure = validateSnapshotForMachine(request.machine, initial);
@@ -21241,6 +21244,9 @@ function simulateMachine(input) {
   }
   return { status: "ok", accepted, initial, final: current, steps, stopped_at: stoppedAt };
 }
+
+// src/model/version.ts
+var SERVER_VERSION = "0.1.0";
 
 // src/presentation.ts
 function presentValidation(result) {
@@ -21318,7 +21324,7 @@ var annotations = {
 };
 function createServer() {
   const server = new McpServer(
-    { name: "state-machine", version: "0.1.0" },
+    { name: "state-machine", version: SERVER_VERSION },
     {
       instructions: "Use machine.step for one current-state event, machine.simulate for an event sequence, machine.find_path for a shortest structural route, machine.validate after authoring or changing a spec, machine.inspect for compact topology, and machine.diff for semantic changes. Guard outcomes must come from explicit facts or an owning rules tool. Effects are intents only and are never executed by this server."
     }

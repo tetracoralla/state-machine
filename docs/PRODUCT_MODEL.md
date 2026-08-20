@@ -29,7 +29,9 @@ The single workspace has three linked carriers:
 Validation stays next to the source object. Import replaces the draft only after
 the selected file parses. Export downloads the current valid spec. A local draft
 is restored on reload; reset returns to the shipped order-flow example. Source
-history supports undo and redo during the session.
+history supports undo and redo during the session. If browser storage is denied
+or full, editing continues in memory and the workspace visibly warns that a
+reload may lose the draft.
 
 ## Shared deterministic core
 

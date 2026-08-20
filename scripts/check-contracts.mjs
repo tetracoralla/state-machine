@@ -22,6 +22,9 @@ if (packageJson.bin?.["state-machine"] !== "./dist/node/adapters/cli.js") failur
 if (packageJson.bin?.["state-machine-mcp"] !== "./dist/node/adapters/mcp.js") failures.push("MCP entry differs");
 if (pluginJson.name !== "state-machine") failures.push("plugin identity differs");
 if (pluginJson.version !== packageJson.version) failures.push("plugin and package versions differ");
+const versionSource = readFileSync(resolve(root, "src/model/version.ts"), "utf8");
+const serverVersion = /SERVER_VERSION\s*=\s*"([^"]+)"/.exec(versionSource)?.[1];
+if (serverVersion !== packageJson.version) failures.push("server version literal differs from package.json");
 if (pluginJson.interface?.displayName !== "State Machine") failures.push("plugin display name differs");
 if (skill.includes("[TODO:")) failures.push("product Skill contains TODO placeholders");
 for (const name of [

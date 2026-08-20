@@ -7,6 +7,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import type * as z from "zod/v4";
 
 import { diffMachines, findPath, inspectMachine, simulateMachine, stepMachine, validateMachine } from "../index.js";
+import { SERVER_VERSION } from "../model/version.js";
 import {
   DiffRequestSchema,
   DiffResultSchema,
@@ -78,7 +79,7 @@ const annotations = {
 
 export function createServer(): McpServer {
   const server = new McpServer(
-    { name: "state-machine", version: "0.1.0" },
+    { name: "state-machine", version: SERVER_VERSION },
     {
       instructions:
         "Use machine.step for one current-state event, machine.simulate for an event sequence, machine.find_path for a shortest structural route, machine.validate after authoring or changing a spec, machine.inspect for compact topology, and machine.diff for semantic changes. Guard outcomes must come from explicit facts or an owning rules tool. Effects are intents only and are never executed by this server.",

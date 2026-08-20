@@ -101,4 +101,68 @@ describe("stepMachine", () => {
   it("sorts structurally enabled events deterministically", () => {
     expect(enabledEvents(orderMachine(), "paid")).toEqual(["CANCEL", "START_FULFILLMENT"]);
   });
+
+  it("treats Object.prototype member names as undeclared events and transitions", () => {
+    const machine = {
+      version: "0.1" as const,
+      id: "prototype-probe",
+      initial: "start",
+      events: { GO: {} },
+      states: { start: { on: { GO: { target: "done" } } }, done: { final: true } },
+    };
+    expect(stepMachine({ machine, event: { type: "toString" } })).toMatchObject({
+      status: "error",
+      error: { code: "EVENT_UNKNOWN" },
+    });
+  });
+
+  it("requires an explicit outcome for a guard named like an Object.prototype member", () => {
+    const machine = {
+      version: "0.1" as const,
+      id: "prototype-guard",
+      initial: "start",
+      events: { GO: {} },
+      guards: { valueOf: { description: "Named like a prototype member." } },
+      states: { start: { on: { GO: { target: "done", guard: "valueOf" } } }, done: { final: true } },
+    };
+    expect(stepMachine({ machine, event: { type: "GO" }, guard_results: {} })).toMatchObject({
+      status: "ok",
+      accepted: false,
+      reason: "GUARD_RESULT_REQUIRED",
+    });
+  });
+
+  it("does not confuse inherited properties with declared payload fields", () => {
+    const machine = {
+      version: "0.1" as const,
+      id: "prototype-fields",
+      initial: "start",
+      events: { GO: { fields: { n: { type: "number" }, valueOf: { type: "string", required: false } } } },
+      states: { start: { on: { GO: { target: "done" } } }, done: { final: true } },
+    };
+    expect(stepMachine({ machine, event: { type: "GO", payload: { n: 1 } } })).toMatchObject({
+      status: "ok",
+      accepted: true,
+    });
+    expect(stepMachine({ machine, event: { type: "GO", payload: { n: 1, toString: "undeclared" } } })).toMatchObject({
+      status: "error",
+      error: { code: "EVENT_PAYLOAD_INVALID" },
+    });
+  });
+
+  it("rejects own __proto__ payload keys instead of silently dropping them", () => {
+    const machine = {
+      version: "0.1" as const,
+      id: "proto-key",
+      initial: "start",
+      events: { GO: {} },
+      states: { start: { on: { GO: { target: "done" } } }, done: { final: true } },
+    };
+    const payload = JSON.parse('{"__proto__": {"x": 1}}');
+    expect(Object.prototype.hasOwnProperty.call(payload, "__proto__")).toBe(true);
+    expect(stepMachine({ machine, event: { type: "GO", payload } })).toMatchObject({
+      status: "error",
+      error: { code: "INPUT_INVALID" },
+    });
+  });
 });

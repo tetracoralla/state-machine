@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { diffMachines, findPath, inspectMachine, simulateMachine, stepMachine, validateMachine } from "../index.js";
+import { MODEL_LIMITS } from "../model/schemas.js";
 import { readSourceFile } from "./source.js";
 
 const HELP = `State Machine 0.1
@@ -22,7 +23,31 @@ Options:
 
 function option(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
-  return index >= 0 ? args[index + 1] : undefined;
+  if (index < 0) return undefined;
+  const value = args[index + 1];
+  if (value === undefined || value.startsWith("--")) throw new Error(`${name} requires a value.`);
+  return value;
+}
+
+const COMMAND_OPTIONS: Readonly<Record<string, readonly string[]>> = {
+  validate: ["--pretty"],
+  inspect: ["--pretty"],
+  step: ["--event", "--snapshot", "--guards", "--pretty"],
+  simulate: ["--continue", "--pretty"],
+  path: ["--from", "--max-depth", "--pretty"],
+  diff: ["--pretty"],
+};
+
+function validateOptions(args: string[], command: string): void {
+  const allowed = COMMAND_OPTIONS[command];
+  if (!allowed) throw new Error(`Unknown command '${command}'.`);
+  const seen = new Set<string>();
+  for (const token of args.slice(1)) {
+    if (!token.startsWith("--")) continue;
+    if (!allowed.includes(token)) throw new Error(`Unknown option '${token}' for '${command}'.`);
+    if (seen.has(token)) throw new Error(`Option '${token}' may only be provided once.`);
+    seen.add(token);
+  }
 }
 
 function parseJsonOption(raw: string | undefined, label: string): unknown {
@@ -59,27 +84,34 @@ export function runCli(argv: string[]): number {
   }
   const pretty = args.includes("--pretty");
   try {
+    validateOptions(args, command);
     let result: unknown;
     if (command === "validate") result = validateMachine(requireMachine(args[1]));
     else if (command === "inspect") result = inspectMachine(requireMachine(args[1]));
     else if (command === "step") {
       const event = parseJsonOption(option(args, "--event"), "--event");
-      if (!event) throw new Error("--event is required.");
+      if (event === undefined) throw new Error("--event is required.");
       const snapshot = parseJsonOption(option(args, "--snapshot"), "--snapshot");
       const guards = parseJsonOption(option(args, "--guards"), "--guards");
       result = stepMachine({
         machine: requireMachine(args[1]),
         event,
-        ...(snapshot ? { snapshot } : {}),
-        ...(guards ? { guard_results: guards } : {}),
+        ...(snapshot !== undefined ? { snapshot } : {}),
+        ...(guards !== undefined ? { guard_results: guards } : {}),
       });
     } else if (command === "simulate") {
       if (!args[2]) throw new Error("An events file is required.");
       const eventsSource = readSourceFile(args[2]);
       if (!eventsSource.ok) throw new Error(`${eventsSource.error.code}: ${eventsSource.error.message}`);
-      const events = Array.isArray(eventsSource.value)
-        ? eventsSource.value
-        : (eventsSource.value as { events?: unknown }).events;
+      const eventsValue = eventsSource.value;
+      const events = Array.isArray(eventsValue)
+        ? eventsValue
+        : eventsValue !== null && typeof eventsValue === "object"
+          ? (eventsValue as { events?: unknown }).events
+          : undefined;
+      if (!Array.isArray(events)) {
+        throw new Error("Events file must be a YAML/JSON array of events or an object with an events array.");
+      }
       result = simulateMachine({
         machine: requireMachine(args[1]),
         events,
@@ -88,16 +120,22 @@ export function runCli(argv: string[]): number {
     } else if (command === "path") {
       if (!args[2]) throw new Error("A target state is required.");
       const rawDepth = option(args, "--max-depth");
+      let maxDepth: number | undefined;
+      if (rawDepth !== undefined) {
+        maxDepth = Number(rawDepth);
+        if (!Number.isInteger(maxDepth) || maxDepth < 0 || maxDepth > MODEL_LIMITS.maxPathDepth) {
+          throw new Error(`--max-depth must be an integer from 0 to ${MODEL_LIMITS.maxPathDepth}.`);
+        }
+      }
+      const from = option(args, "--from");
       result = findPath({
         machine: requireMachine(args[1]),
         target: args[2],
-        ...(option(args, "--from") ? { from: option(args, "--from") } : {}),
-        ...(rawDepth ? { max_depth: Number(rawDepth) } : {}),
+        ...(from !== undefined ? { from } : {}),
+        ...(maxDepth !== undefined ? { max_depth: maxDepth } : {}),
       });
     } else if (command === "diff") {
       result = diffMachines({ before: requireMachine(args[1]), after: requireMachine(args[2]) });
-    } else {
-      throw new Error(`Unknown command '${command}'.`);
     }
     emit(result, pretty);
     return operationExitCode(result);

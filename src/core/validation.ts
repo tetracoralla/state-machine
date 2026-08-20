@@ -1,6 +1,7 @@
 import type * as z from "zod/v4";
 
 import { MachineSpecSchema, MODEL_LIMITS } from "../model/schemas.js";
+import { codeUnitCompare } from "../model/ordering.js";
 import type {
   Diagnostic,
   FieldDefinition,
@@ -12,16 +13,12 @@ import type {
   ValueSource,
 } from "../model/types.js";
 
-function codeUnitCompare(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
 function zodPath(path: PropertyKey[]): string {
   if (path.length === 0) return "$";
   return `$${path.map((part) => (typeof part === "number" ? `[${part}]` : `.${String(part)}`)).join("")}`;
 }
 
-function schemaDiagnostics(error: z.ZodError): Diagnostic[] {
+export function schemaDiagnostics(error: z.ZodError): Diagnostic[] {
   return error.issues.slice(0, MODEL_LIMITS.maxDiagnostics).map((issue) => ({
     severity: "error",
     code: "SCHEMA_INVALID",
@@ -64,7 +61,7 @@ export function validateFields(
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   for (const name of Object.keys(value).sort(codeUnitCompare)) {
-    if (!fields[name]) {
+    if (!Object.hasOwn(fields, name)) {
       diagnostics.push({
         severity: "error",
         code: "FIELD_UNDECLARED",
@@ -74,7 +71,7 @@ export function validateFields(
     }
   }
   for (const [name, field] of Object.entries(fields).sort(([left], [right]) => codeUnitCompare(left, right))) {
-    const current = value[name];
+    const current = Object.hasOwn(value, name) ? value[name] : undefined;
     if (current === undefined) {
       if (field.required !== false) {
         diagnostics.push({
@@ -123,7 +120,7 @@ function sourceType(
   if (source.kind === "literal") return literalType(source);
   const fields = source.kind === "event" ? eventFields : contextFields;
   const first = firstPathSegment(source);
-  const field = first ? fields[first] : undefined;
+  const field = first && Object.hasOwn(fields, first) ? fields[first] : undefined;
   if (!first || !field) return "unknown";
   if (source.path.includes(".")) {
     if (field.type !== "object") {
@@ -154,7 +151,7 @@ function checkValueSource(
 ): InferredValueType {
   const first = firstPathSegment(source);
   if (!first) return sourceType(diagnostics, source, path, eventFields, contextFields);
-  if (source.kind === "event" && !eventFields[first]) {
+  if (source.kind === "event" && !Object.hasOwn(eventFields, first)) {
     diagnostics.push({
       severity: "error",
       code: "EVENT_VALUE_UNDECLARED",
@@ -162,7 +159,7 @@ function checkValueSource(
       path,
     });
   }
-  if (source.kind === "context" && !contextFields[first]) {
+  if (source.kind === "context" && !Object.hasOwn(contextFields, first)) {
     diagnostics.push({
       severity: "error",
       code: "CONTEXT_VALUE_UNDECLARED",
@@ -178,9 +175,9 @@ function structurallyReachable(machine: MachineSpec, start: string): Set<string>
   const queue = [start];
   while (queue.length > 0) {
     const stateId = queue.shift();
-    if (!stateId || visited.has(stateId) || !machine.states[stateId]) continue;
+    if (!stateId || visited.has(stateId) || !Object.hasOwn(machine.states, stateId)) continue;
     visited.add(stateId);
-    const targets = Object.values(machine.states[stateId].on ?? {})
+    const targets = Object.values(machine.states[stateId]?.on ?? {})
       .map((transition) => transition.target)
       .sort(codeUnitCompare);
     queue.push(...targets);
@@ -210,12 +207,14 @@ function statesThatCanReachFinal(machine: MachineSpec): Set<string> {
 export function validateMachine(input: unknown): ValidationResult {
   const parsed = MachineSpecSchema.safeParse(input);
   if (!parsed.success) return { status: "invalid", diagnostics: schemaDiagnostics(parsed.error) };
+  return validateParsedMachine(parsed.data as MachineSpec);
+}
 
-  const machine = parsed.data as MachineSpec;
+export function validateParsedMachine(machine: MachineSpec): ValidationResult {
   const diagnostics: Diagnostic[] = [];
   const contextFields = machine.context?.schema ?? {};
 
-  if (!machine.states[machine.initial]) {
+  if (!Object.hasOwn(machine.states, machine.initial)) {
     diagnostics.push({
       severity: "error",
       code: "INITIAL_STATE_UNKNOWN",
@@ -249,7 +248,7 @@ export function validateMachine(input: unknown): ValidationResult {
     for (const [eventName, transition] of Object.entries(transitions).sort(([left], [right]) => codeUnitCompare(left, right))) {
       usedEvents.add(eventName);
       const transitionPath = `$.states.${stateId}.on.${eventName}`;
-      const eventDefinition = machine.events[eventName];
+      const eventDefinition = Object.hasOwn(machine.events, eventName) ? machine.events[eventName] : undefined;
       if (!eventDefinition) {
         diagnostics.push({
           severity: "error",
@@ -258,7 +257,7 @@ export function validateMachine(input: unknown): ValidationResult {
           path: transitionPath,
         });
       }
-      if (!machine.states[transition.target]) {
+      if (!Object.hasOwn(machine.states, transition.target)) {
         diagnostics.push({
           severity: "error",
           code: "TARGET_STATE_UNKNOWN",
@@ -268,7 +267,7 @@ export function validateMachine(input: unknown): ValidationResult {
       }
       if (transition.guard) {
         usedGuards.add(transition.guard);
-        if (!machine.guards?.[transition.guard]) {
+        if (!(machine.guards && Object.hasOwn(machine.guards, transition.guard))) {
           diagnostics.push({
             severity: "error",
             code: "GUARD_UNKNOWN",
@@ -279,7 +278,7 @@ export function validateMachine(input: unknown): ValidationResult {
       }
       const eventFields = eventDefinition?.fields ?? {};
       for (const [fieldName, source] of Object.entries(transition.assign ?? {})) {
-        const targetField = contextFields[fieldName];
+        const targetField = Object.hasOwn(contextFields, fieldName) ? contextFields[fieldName] : undefined;
         if (!targetField) {
           diagnostics.push({
             severity: "error",
@@ -334,7 +333,7 @@ export function validateMachine(input: unknown): ValidationResult {
     }
   }
 
-  if (machine.states[machine.initial]) {
+  if (Object.hasOwn(machine.states, machine.initial)) {
     const reachable = structurallyReachable(machine, machine.initial);
     for (const stateId of Object.keys(machine.states).sort(codeUnitCompare)) {
       if (!reachable.has(stateId)) {

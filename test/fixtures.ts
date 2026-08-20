@@ -69,3 +69,15 @@ export const paymentEvent = {
   payload: { amount: 128, payment_id: "pay_1024" },
 };
 
+export function largeContextMachine(): MachineSpec {
+  const data = Object.fromEntries(Array.from({ length: 11 }, (_, index) => [`batch_${index}`, Array.from({ length: 950 }, () => 0)]));
+  return {
+    version: "0.1",
+    id: "large-context",
+    initial: "pending",
+    context: { schema: { data: { type: "object" } }, initial: { data } },
+    events: { GO: {} },
+    states: { pending: { on: { GO: { target: "done" } } }, done: { final: true } },
+  };
+}
+

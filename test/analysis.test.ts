@@ -2,19 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { diffMachines, findPath, inspectMachine, reachableStates, simulateMachine, stepMachine } from "../src/index.js";
 import type { MachineSpec } from "../src/model/types.js";
-import { orderMachine, paymentEvent } from "./fixtures.js";
+import { largeContextMachine, orderMachine, paymentEvent } from "./fixtures.js";
 
 describe("simulation and graph analysis", () => {
   it("keeps one-event simulation equivalent to a direct step near the request complexity limit", () => {
-    const data = Object.fromEntries(Array.from({ length: 11 }, (_, index) => [`batch_${index}`, Array.from({ length: 950 }, () => 0)]));
-    const machine: MachineSpec = {
-      version: "0.1",
-      id: "large-context",
-      initial: "pending",
-      context: { schema: { data: { type: "object" } }, initial: { data } },
-      events: { GO: {} },
-      states: { pending: { on: { GO: { target: "done" } } }, done: { final: true } },
-    };
+    const machine = largeContextMachine();
     const direct = stepMachine({ machine, event: { type: "GO" } });
     const result = simulateMachine({ machine, events: [{ event: { type: "GO" } }] });
     expect(direct).toMatchObject({ status: "ok", accepted: true, after: { state: "done" } });

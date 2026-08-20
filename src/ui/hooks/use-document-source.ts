@@ -8,14 +8,28 @@ interface History {
   future: string[];
 }
 
+const PERSISTENCE_ERROR = "Draft persistence is unavailable. Changes remain in this tab but may be lost on reload.";
+
+function loadInitialDocument(sample: string): { source: string; persistenceError: string | null } {
+  try {
+    return { source: window.localStorage.getItem(STORAGE_KEY) ?? sample, persistenceError: null };
+  } catch {
+    return { source: sample, persistenceError: PERSISTENCE_ERROR };
+  }
+}
+
 export function useDocumentSource(sample: string) {
-  const [history, setHistory] = useState<History>(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    return { past: [], present: saved ?? sample, future: [] };
-  });
+  const [initialDocument] = useState(() => loadInitialDocument(sample));
+  const [history, setHistory] = useState<History>(() => ({ past: [], present: initialDocument.source, future: [] }));
+  const [persistenceError, setPersistenceError] = useState<string | null>(initialDocument.persistenceError);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, history.present);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, history.present);
+      setPersistenceError(null);
+    } catch {
+      setPersistenceError(PERSISTENCE_ERROR);
+    }
   }, [history.present]);
 
   const setSource = useCallback((next: string) => {
@@ -63,6 +77,6 @@ export function useDocumentSource(sample: string) {
     reset,
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,
+    persistenceError,
   };
 }
-

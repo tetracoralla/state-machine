@@ -1,5 +1,6 @@
 import * as z from "zod/v4";
 
+import { RESERVED_SEGMENTS } from "./ordering.js";
 import type { JsonObject, JsonValue } from "./types.js";
 
 export const MODEL_LIMITS = Object.freeze({
@@ -31,9 +32,9 @@ export const ValuePathSchema = z
   .string()
   .min(1)
   .max(256)
-  .regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/, "Expected a dot-delimited value path.")
+  .regex(/^[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z][A-Za-z0-9_-]*)*$/, "Expected a dot-delimited value path of identifier segments.")
   .refine(
-    (path) => !path.split(".").some((segment) => ["__proto__", "prototype", "constructor"].includes(segment)),
+    (path) => !path.split(".").some((segment) => RESERVED_SEGMENTS.includes(segment)),
     "Value path contains a reserved unsafe segment.",
   );
 
@@ -62,7 +63,8 @@ function jsonValuesWithinLimits(values: unknown[]): boolean {
     if (Array.isArray(current.value)) {
       for (const child of current.value) pending.push({ value: child, depth: current.depth + 1 });
     } else if (current.value !== null && typeof current.value === "object") {
-      for (const child of Object.values(current.value as Record<string, unknown>)) {
+      for (const [key, child] of Object.entries(current.value as Record<string, unknown>)) {
+        if (key === "__proto__") return false;
         pending.push({ value: child, depth: current.depth + 1 });
       }
     }
@@ -259,19 +261,19 @@ export const DiagnosticSchema = z.strictObject({
   path: z.string(),
 });
 
+export const MachineStatsSchema = z.strictObject({
+  states: z.number().int(),
+  events: z.number().int(),
+  guards: z.number().int(),
+  transitions: z.number().int(),
+  final_states: z.number().int(),
+});
+
 export const ValidationResultSchema = z.strictObject({
   status: z.enum(["valid", "invalid"]),
   machine_id: z.string().optional(),
   diagnostics: z.array(DiagnosticSchema),
-  stats: z
-    .strictObject({
-      states: z.number().int(),
-      events: z.number().int(),
-      guards: z.number().int(),
-      transitions: z.number().int(),
-      final_states: z.number().int(),
-    })
-    .optional(),
+  stats: MachineStatsSchema.optional(),
 });
 
 export const OperationErrorSchema = z.strictObject({
@@ -344,13 +346,7 @@ export const InspectResultSchema = z.union([
     events: z.array(z.string()),
     guards: z.array(z.string()),
     transitions: z.array(z.strictObject({ from: z.string(), event: z.string(), to: z.string(), guard: z.string().nullable() })),
-    stats: z.strictObject({
-      states: z.number().int(),
-      events: z.number().int(),
-      guards: z.number().int(),
-      transitions: z.number().int(),
-      final_states: z.number().int(),
-    }),
+    stats: MachineStatsSchema,
     limits: z.record(z.string(), z.number()),
   }),
   OperationErrorSchema,

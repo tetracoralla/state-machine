@@ -10,7 +10,7 @@ import { useDocumentSource } from "./hooks/use-document-source.js";
 import { downloadSource, parseEditorSource } from "./lib/editor-source.js";
 
 export function App() {
-  const { source, setSource, undo, redo, reset, canUndo, canRedo } = useDocumentSource(sampleSource);
+  const { source, setSource, undo, redo, reset, canUndo, canRedo, persistenceError } = useDocumentSource(sampleSource);
   const parsed = useMemo(() => parseEditorSource(source), [source]);
   const [currentState, setCurrentState] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -20,7 +20,9 @@ export function App() {
 
   function handleImport(nextSource: string) {
     const next = parseEditorSource(nextSource);
-    const parseFailure = next.validation.diagnostics.find((diagnostic) => diagnostic.code === "SOURCE_PARSE_FAILED");
+    const parseFailure = next.validation.diagnostics.find((diagnostic) =>
+      diagnostic.code === "SOURCE_PARSE_FAILED" || diagnostic.code === "REQUEST_TOO_LARGE",
+    );
     if (parseFailure) {
       setNotice(`Import failed: ${parseFailure.message}`);
       return;
@@ -51,6 +53,11 @@ export function App() {
         <div className="app-notice" role="alert">
           <span>{notice}</span>
           <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss import error">Dismiss</button>
+        </div>
+      )}
+      {persistenceError && (
+        <div className="app-notice" role="alert">
+          <span>{persistenceError}</span>
         </div>
       )}
       <main className="workspace">

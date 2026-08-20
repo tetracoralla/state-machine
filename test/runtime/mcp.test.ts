@@ -6,6 +6,8 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
+import { largeContextMachine } from "../fixtures.js";
+
 const root = resolve(import.meta.dirname, "../..");
 const pluginRoot = resolve(root, "plugins/state-machine");
 const machine = parse(readFileSync(resolve(root, "examples/order.machine.yaml"), "utf8")) as Record<string, unknown>;
@@ -147,18 +149,9 @@ describe("built plugin MCP stdio runtime", () => {
   });
 
   it("simulates one event near the cumulative complexity limit", async () => {
-    const data = Object.fromEntries(Array.from({ length: 11 }, (_, index) => [`batch_${index}`, Array.from({ length: 950 }, () => 0)]));
-    const largeMachine = {
-      version: "0.1",
-      id: "large-context",
-      initial: "pending",
-      context: { schema: { data: { type: "object" } }, initial: { data } },
-      events: { GO: {} },
-      states: { pending: { on: { GO: { target: "done" } } }, done: { final: true } },
-    };
     const called = await client.callTool({
       name: "machine.simulate",
-      arguments: { machine: largeMachine, events: [{ event: { type: "GO" } }] },
+      arguments: { machine: largeContextMachine(), events: [{ event: { type: "GO" } }] },
     });
     expect(called.isError).not.toBe(true);
     expect(called.structuredContent).toMatchObject({ status: "ok", accepted: true, final: { state: "done" } });

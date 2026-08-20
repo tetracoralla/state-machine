@@ -1,8 +1,9 @@
 import { SimulationRequestSchema } from "../model/schemas.js";
 import type { OperationError, SimulationRequest, SimulationResult, StepRejection, StepSuccess } from "../model/types.js";
+import { machineError } from "./operation-error.js";
 import { initialSnapshot, stepValidatedMachine, validateSnapshotForMachine } from "./step.js";
 import { cloneObject } from "./value-source.js";
-import { validateMachine } from "./validation.js";
+import { validateParsedMachine } from "./validation.js";
 
 export function simulateMachine(input: SimulationRequest | unknown): SimulationResult | OperationError {
   const parsed = SimulationRequestSchema.safeParse(input);
@@ -10,12 +11,9 @@ export function simulateMachine(input: SimulationRequest | unknown): SimulationR
     return { status: "error", error: { code: "INPUT_INVALID", message: parsed.error.issues[0]?.message ?? "Simulation request is invalid." } };
   }
   const request = parsed.data as SimulationRequest;
-  const validation = validateMachine(request.machine);
+  const validation = validateParsedMachine(request.machine);
   if (validation.status === "invalid") {
-    return {
-      status: "error",
-      error: { code: "MACHINE_INVALID", message: "Machine failed semantic validation.", details: validation.diagnostics },
-    };
+    return machineError(validation.diagnostics);
   }
   const initial = request.snapshot
     ? { state: request.snapshot.state, context: cloneObject(request.snapshot.context) }

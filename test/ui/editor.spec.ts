@@ -60,6 +60,37 @@ test("persists edits and exports the current valid source", async ({ page }) => 
   expect(download.suggestedFilename()).toBe("order-lifecycle.machine.yaml");
 });
 
+test("rejects an unreadable import without replacing the current draft", async ({ page }) => {
+  const editor = page.getByLabel("Machine definition");
+  const original = await editor.inputValue();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "broken.machine.yaml",
+    mimeType: "text/yaml",
+    buffer: Buffer.from("version: [broken\n"),
+  });
+
+  await expect(page.getByRole("alert")).toContainText("Import failed");
+  await expect(editor).toHaveValue(original);
+});
+
+test("keeps the editor usable and warns when draft persistence is unavailable", async ({ page }) => {
+  await page.addInitScript(() => {
+    Storage.prototype.getItem = () => {
+      throw new DOMException("Storage denied", "SecurityError");
+    };
+    Storage.prototype.setItem = () => {
+      throw new DOMException("Storage denied", "SecurityError");
+    };
+  });
+  await page.reload();
+
+  await expect(page.getByRole("alert")).toContainText("Draft persistence is unavailable");
+  const editor = page.getByLabel("Machine definition");
+  const source = await editor.inputValue();
+  await editor.fill(source.replace("title: Order lifecycle", "title: In-memory lifecycle"));
+  await expect(page.getByText("In-memory lifecycle", { exact: true })).toBeVisible();
+});
+
 for (const viewport of [
   { width: 390, height: 844 },
   { width: 960, height: 900 },

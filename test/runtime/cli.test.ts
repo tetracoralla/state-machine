@@ -49,4 +49,19 @@ describe("built CLI", () => {
     expect(executed.status).toBe(1);
     expect(JSON.parse(executed.stdout)).toMatchObject({ status: "error", error: { code: "EVENT_PAYLOAD_INVALID" } });
   });
+
+  it("uses exit code 2 for missing option values and invalid path-depth syntax", () => {
+    for (const args of [
+      ["step", "examples/order.machine.yaml", "--event", JSON.stringify({ type: "CANCEL" }), "--snapshot"],
+      ["path", "examples/order.machine.yaml", "completed", "--max-depth"],
+      ["path", "examples/order.machine.yaml", "completed", "--max-depth", "1.5"],
+      ["path", "examples/order.machine.yaml", "completed", "--max-depth", "101"],
+      ["step", "examples/order.machine.yaml", "--event", JSON.stringify({ type: "CANCEL" }), "--gaurds", "{}"],
+      ["step", "examples/order.machine.yaml", "--event", JSON.stringify({ type: "CANCEL" }), "--event", JSON.stringify({ type: "CANCEL" })],
+    ]) {
+      const executed = spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8" });
+      expect(executed.status).toBe(2);
+      expect(JSON.parse(executed.stdout)).toMatchObject({ status: "error", error: { code: "CLI_USAGE_ERROR" } });
+    }
+  });
 });

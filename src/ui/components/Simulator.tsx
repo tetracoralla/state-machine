@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { initialSnapshot, stepMachine } from "../../core/step.js";
+import { enabledEvents, initialSnapshot, stepValidatedMachine } from "../../core/step.js";
 import type { GuardCheck, MachineSpec, Snapshot, StepRejection, StepSuccess } from "../../model/types.js";
 import { EventPayloadForm, payloadFromForm } from "./EventPayloadForm.js";
 
@@ -11,10 +11,6 @@ interface SimulatorProps {
 }
 
 type TraceStep = StepSuccess | StepRejection;
-
-function codeUnitCompare(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function guardText(guards: GuardCheck[]): string | null {
   const guard = guards[0];
@@ -29,20 +25,21 @@ export function Simulator({ machine, revision, onStateChange }: SimulatorProps) 
   const [payloadValues, setPayloadValues] = useState<Record<string, string | boolean>>({});
   const [guardOutcome, setGuardOutcome] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const enabled = useMemo(
-    () => Object.keys(machine.states[snapshot.state]?.on ?? {}).sort(codeUnitCompare),
-    [machine, snapshot.state],
-  );
+  const enabled = useMemo(() => enabledEvents(machine, snapshot.state), [machine, snapshot.state]);
 
-  useEffect(() => {
+  function resetRun() {
     const next = initialSnapshot(machine);
     setSnapshot(next);
     setTrace([]);
-    setSelectedEvent(Object.keys(machine.states[next.state]?.on ?? {}).sort(codeUnitCompare)[0] ?? "");
+    setSelectedEvent(enabledEvents(machine, next.state)[0] ?? "");
     setPayloadValues({});
     setGuardOutcome(null);
     setError(null);
     onStateChange(next.state);
+  }
+
+  useEffect(() => {
+    resetRun();
   }, [machine, revision, onStateChange]);
 
   useEffect(() => {
@@ -58,15 +55,6 @@ export function Simulator({ machine, revision, onStateChange }: SimulatorProps) 
   const transition = machine.states[snapshot.state]?.on?.[selectedEvent];
   const eventDefinition = machine.events[selectedEvent];
 
-  function reset() {
-    const next = initialSnapshot(machine);
-    setSnapshot(next);
-    setTrace([]);
-    setError(null);
-    setGuardOutcome(null);
-    onStateChange(next.state);
-  }
-
   function runEvent() {
     if (!selectedEvent || !eventDefinition || !transition) return;
     const payloadResult = payloadFromForm(eventDefinition, payloadValues);
@@ -74,15 +62,18 @@ export function Simulator({ machine, revision, onStateChange }: SimulatorProps) 
       setError(payloadResult.message);
       return;
     }
-    const result = stepMachine({
+    // The workbench only renders the simulator for a semantically valid
+    // machine, so the step can use the validated seam and skip re-parsing
+    // the whole spec on every run.
+    const result = stepValidatedMachine(
       machine,
       snapshot,
-      event: {
+      {
         type: selectedEvent,
         ...(Object.keys(payloadResult.payload).length > 0 ? { payload: payloadResult.payload } : {}),
       },
-      ...(transition.guard && guardOutcome !== null ? { guard_results: { [transition.guard]: guardOutcome } } : {}),
-    });
+      transition.guard && guardOutcome !== null ? { [transition.guard]: guardOutcome } : undefined,
+    );
     if (result.status === "error") {
       setError(`${result.error.code}: ${result.error.message}`);
       return;
@@ -102,7 +93,7 @@ export function Simulator({ machine, revision, onStateChange }: SimulatorProps) 
           <h2 id="simulator-title">Simulator</h2>
           <span>Side-effect free</span>
         </div>
-        <button type="button" className="quiet-button" onClick={reset}>Reset run</button>
+        <button type="button" className="quiet-button" onClick={resetRun}>Reset run</button>
       </div>
       <div className="simulator-layout">
         <div className="snapshot-column">

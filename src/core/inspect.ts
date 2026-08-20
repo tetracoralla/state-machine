@@ -1,25 +1,20 @@
 import { MachineSpecSchema, MODEL_LIMITS } from "../model/schemas.js";
+import { codeUnitCompare } from "../model/ordering.js";
 import type { InspectResult, MachineSpec, OperationError } from "../model/types.js";
-import { machineStats, validateMachine } from "./validation.js";
-
-function codeUnitCompare(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
+import { inputError, machineError } from "./operation-error.js";
+import { machineStats, validateParsedMachine } from "./validation.js";
 
 export function inspectMachine(input: unknown): InspectResult | OperationError {
   const parsed = MachineSpecSchema.safeParse(input);
-  if (!parsed.success) return { status: "error", error: { code: "INPUT_INVALID", message: parsed.error.issues[0]?.message ?? "Machine is invalid." } };
+  if (!parsed.success) return inputError(parsed.error.issues[0]?.message ?? "Machine is invalid.");
   const machine = parsed.data as MachineSpec;
-  const validation = validateMachine(machine);
+  const validation = validateParsedMachine(machine);
   if (validation.status === "invalid") {
-    return { status: "error", error: { code: "MACHINE_INVALID", message: "Machine failed semantic validation.", details: validation.diagnostics } };
+    return machineError(validation.diagnostics);
   }
-  const states = Object.entries(machine.states)
-    .sort(([left], [right]) => codeUnitCompare(left, right))
-    .map(([id, state]) => ({ id, title: state.title ?? null, final: state.final === true }));
-  const transitions = Object.entries(machine.states)
-    .sort(([left], [right]) => codeUnitCompare(left, right))
-    .flatMap(([from, state]) =>
+  const stateEntries = Object.entries(machine.states).sort(([left], [right]) => codeUnitCompare(left, right));
+  const states = stateEntries.map(([id, state]) => ({ id, title: state.title ?? null, final: state.final === true }));
+  const transitions = stateEntries.flatMap(([from, state]) =>
       Object.entries(state.on ?? {})
         .sort(([left], [right]) => codeUnitCompare(left, right))
         .map(([event, transition]) => ({ from, event, to: transition.target, guard: transition.guard ?? null })),
@@ -36,4 +31,3 @@ export function inspectMachine(input: unknown): InspectResult | OperationError {
     limits: { ...MODEL_LIMITS },
   };
 }
-

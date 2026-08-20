@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { MachineSpecSchema, StepRequestSchema, validateMachine } from "../src/index.js";
+import { MachineSpecSchema, StepRequestSchema, stepMachine, validateMachine } from "../src/index.js";
+import type { MachineSpec } from "../src/index.js";
 import { orderMachine } from "./fixtures.js";
 
 describe("validateMachine", () => {
@@ -114,5 +115,65 @@ describe("validateMachine", () => {
         event: { type: "CANCEL" },
       }).success,
     ).toBe(false);
+  });
+
+  it("treats Object.prototype member names as nonexistent states", () => {
+    const targetMachine = orderMachine();
+    const transition = targetMachine.states.pending?.on?.PAYMENT_SUCCESS;
+    expect(transition).toBeDefined();
+    if (transition) transition.target = "toString";
+    expect(validateMachine(targetMachine).status).toBe("invalid");
+
+    const initialMachine = orderMachine();
+    initialMachine.initial = "hasOwnProperty";
+    const initialResult = validateMachine(initialMachine);
+    expect(initialResult.status).toBe("invalid");
+    expect(initialResult.diagnostics).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "INITIAL_STATE_UNKNOWN" })]),
+    );
+  });
+
+  it("flags transitions and assignments that use Object.prototype member names", () => {
+    const machine: MachineSpec = {
+      version: "0.1",
+      id: "prototype-members",
+      initial: "start",
+      context: { schema: { amount: { type: "number" } }, initial: { amount: 1 } },
+      events: { GO: {} },
+      states: {
+        start: {
+          on: {
+            GO: { target: "done", assign: { toString: { kind: "literal" as const, value: 1 } } },
+            valueOf: { target: "done" },
+          },
+        },
+        done: { final: true },
+      },
+    };
+    const result = validateMachine(machine);
+    expect(result.status).toBe("invalid");
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "EVENT_UNKNOWN", path: "$.states.start.on.valueOf" }),
+        expect.objectContaining({ code: "CONTEXT_ASSIGN_UNDECLARED", path: "$.states.start.on.GO.assign.toString" }),
+      ]),
+    );
+  });
+
+  it("accepts hyphenated identifiers in value paths", () => {
+    const machine: MachineSpec = {
+      version: "0.1",
+      id: "hyphen-fields",
+      initial: "start",
+      context: { schema: { "retry-count": { type: "integer", required: false } }, initial: {} },
+      events: { GO: { fields: { "retry-count": { type: "integer", required: false } } } },
+      states: { start: { on: { GO: { target: "done", assign: { "retry-count": { kind: "event", path: "retry-count" } } } } }, done: { final: true } },
+    };
+    expect(validateMachine(machine)).toMatchObject({ status: "valid", diagnostics: [] });
+    expect(stepMachine({ machine, event: { type: "GO", payload: { "retry-count": 2 } } })).toMatchObject({
+      status: "ok",
+      accepted: true,
+      after: { context: { "retry-count": 2 } },
+    });
   });
 });

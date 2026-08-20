@@ -1,6 +1,6 @@
 import { StepRequestSchema } from "../model/schemas.js";
+import { codeUnitCompare } from "../model/ordering.js";
 import type {
-  Diagnostic,
   EventInstance,
   JsonObject,
   MachineSpec,
@@ -11,40 +11,21 @@ import type {
   StepResult,
   ValueSource,
 } from "../model/types.js";
+import { inputError, machineError, runtimeError } from "./operation-error.js";
 import { cloneObject, resolveValueSource } from "./value-source.js";
-import { validateFields, validateMachine } from "./validation.js";
-
-function codeUnitCompare(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function inputError(message: string): OperationError {
-  return { status: "error", error: { code: "INPUT_INVALID", message } };
-}
-
-function machineError(details: Diagnostic[]): OperationError {
-  return {
-    status: "error",
-    error: { code: "MACHINE_INVALID", message: "Machine failed semantic validation.", details },
-  };
-}
-
-function runtimeError(code: string, message: string, details?: Diagnostic[]): OperationError {
-  const error: OperationError["error"] = { code, message };
-  if (details && details.length > 0) error.details = details;
-  return { status: "error", error };
-}
+import { validateFields, validateParsedMachine } from "./validation.js";
 
 export function initialSnapshot(machine: MachineSpec): Snapshot {
   return { state: machine.initial, context: cloneObject(machine.context?.initial ?? {}) };
 }
 
 export function enabledEvents(machine: MachineSpec, state: string): string[] {
-  return Object.keys(machine.states[state]?.on ?? {}).sort(codeUnitCompare);
+  const on = Object.hasOwn(machine.states, state) ? machine.states[state]?.on : undefined;
+  return Object.keys(on ?? {}).sort(codeUnitCompare);
 }
 
 export function validateSnapshotForMachine(machine: MachineSpec, snapshot: Snapshot): OperationError | null {
-  if (!machine.states[snapshot.state]) {
+  if (!Object.hasOwn(machine.states, snapshot.state)) {
     return runtimeError("SNAPSHOT_STATE_UNKNOWN", `Snapshot state '${snapshot.state}' does not exist.`);
   }
   const contextDiagnostics = validateFields(snapshot.context, machine.context?.schema ?? {}, "$.snapshot.context");
@@ -55,7 +36,7 @@ export function validateSnapshotForMachine(machine: MachineSpec, snapshot: Snaps
 }
 
 function validateEventPayload(machine: MachineSpec, event: EventInstance): OperationError | null {
-  const eventDefinition = machine.events[event.type];
+  const eventDefinition = Object.hasOwn(machine.events, event.type) ? machine.events[event.type] : undefined;
   if (!eventDefinition) return runtimeError("EVENT_UNKNOWN", `Event '${event.type}' is not declared.`);
   const payloadDiagnostics = validateFields(event.payload ?? {}, eventDefinition.fields ?? {}, "$.event.payload");
   if (payloadDiagnostics.some((diagnostic) => diagnostic.severity === "error")) {
@@ -87,7 +68,9 @@ function resolveEffects(
   event: EventInstance,
   snapshot: Snapshot,
 ): ResolvedEffectIntent[] | OperationError {
-  const effects = machine.states[state]?.on?.[event.type]?.effects ?? [];
+  const on = Object.hasOwn(machine.states, state) ? machine.states[state]?.on : undefined;
+  const transition = on && Object.hasOwn(on, event.type) ? on[event.type] : undefined;
+  const effects = transition?.effects ?? [];
   const output: ResolvedEffectIntent[] = [];
   for (let index = 0; index < effects.length; index += 1) {
     const effect = effects[index];
@@ -112,9 +95,11 @@ export function stepValidatedMachine(
   };
   const snapshotFailure = validateSnapshotForMachine(machine, snapshot);
   if (snapshotFailure) return snapshotFailure;
-  if (!machine.events[event.type]) return runtimeError("EVENT_UNKNOWN", `Event '${event.type}' is not declared.`);
+  if (!Object.hasOwn(machine.events, event.type)) return runtimeError("EVENT_UNKNOWN", `Event '${event.type}' is not declared.`);
 
-  const transition = machine.states[snapshot.state]?.on?.[event.type];
+  const stateDefinition = Object.hasOwn(machine.states, snapshot.state) ? machine.states[snapshot.state] : undefined;
+  const on = stateDefinition?.on;
+  const transition = on && Object.hasOwn(on, event.type) ? on[event.type] : undefined;
   const base = {
     status: "ok" as const,
     before: snapshot,
@@ -130,10 +115,12 @@ export function stepValidatedMachine(
   const payloadFailure = validateEventPayload(machine, event);
   if (payloadFailure) return payloadFailure;
   for (const guardName of Object.keys(guardResults ?? {})) {
-    if (!machine.guards?.[guardName]) return runtimeError("GUARD_RESULT_UNKNOWN", `Guard result '${guardName}' is not declared.`);
+    if (!(machine.guards && Object.hasOwn(machine.guards, guardName))) {
+      return runtimeError("GUARD_RESULT_UNKNOWN", `Guard result '${guardName}' is not declared.`);
+    }
   }
   if (transition.guard) {
-    const outcome = guardResults?.[transition.guard];
+    const outcome = guardResults && Object.hasOwn(guardResults, transition.guard) ? guardResults[transition.guard] : undefined;
     const guards = [{ name: transition.guard, outcome: outcome ?? null }];
     if (outcome === undefined) return { ...base, guards, accepted: false, reason: "GUARD_RESULT_REQUIRED" };
     if (!outcome) return { ...base, guards, accepted: false, reason: "GUARD_REJECTED" };
@@ -165,7 +152,7 @@ export function stepMachine(input: StepRequest | unknown): StepResult {
   const parsed = StepRequestSchema.safeParse(input);
   if (!parsed.success) return inputError(parsed.error.issues[0]?.message ?? "Step request is invalid.");
   const request = parsed.data as StepRequest;
-  const validation = validateMachine(request.machine);
+  const validation = validateParsedMachine(request.machine);
   if (validation.status === "invalid") return machineError(validation.diagnostics);
   const snapshot = request.snapshot ?? initialSnapshot(request.machine);
   return stepValidatedMachine(request.machine, snapshot, request.event, request.guard_results);
