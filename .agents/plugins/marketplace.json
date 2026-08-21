@@ -1,0 +1,20 @@
+{
+  "name": "state-machine",
+  "interface": {
+    "displayName": "Step Switch"
+  },
+  "plugins": [
+    {
+      "name": "state-machine",
+      "source": {
+        "source": "local",
+        "path": "./plugins/state-machine"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

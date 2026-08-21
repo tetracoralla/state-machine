@@ -359,7 +359,7 @@ export function validateParsedMachine(machine: MachineSpec): ValidationResult {
   }
 
   const limited = diagnostics.slice(0, MODEL_LIMITS.maxDiagnostics);
-  const hasErrors = limited.some((diagnostic) => diagnostic.severity === "error");
+  const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === "error");
   return {
     status: hasErrors ? "invalid" : "valid",
     machine_id: machine.id,

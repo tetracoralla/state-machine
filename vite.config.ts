@@ -8,7 +8,7 @@ export default defineConfig({
   build: {
     outDir: "../../dist/ui",
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: false,
     target: "es2022",
   },
   server: {
@@ -16,4 +16,3 @@ export default defineConfig({
     port: 4173,
   },
 });
-

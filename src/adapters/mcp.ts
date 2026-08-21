@@ -59,15 +59,15 @@ function respond(result: object, summary: string, outputSchema: z.ZodType) {
   if (!outputSchema.safeParse(result).success) {
     return toolError("INTERNAL_OUTPUT_INVALID", "Tool result failed its executable output contract.");
   }
-  const serialized = JSON.stringify(result);
-  if (Buffer.byteLength(serialized) > MODEL_LIMITS.maxResponseBytes) {
-    return toolError("RESPONSE_TOO_LARGE", "Result exceeds the complete response byte limit.");
-  }
-  return {
+  const response = {
     content: [{ type: "text" as const, text: summary }],
     structuredContent: result as Record<string, unknown>,
     ...("status" in result && result.status === "error" ? { isError: true } : {}),
   };
+  if (Buffer.byteLength(JSON.stringify(response)) > MODEL_LIMITS.maxResponseBytes) {
+    return toolError("RESPONSE_TOO_LARGE", "Result exceeds the complete response byte limit.");
+  }
+  return response;
 }
 
 const annotations = {
@@ -190,5 +190,5 @@ function isDirectEntry(): boolean {
 
 if (isDirectEntry()) {
   void serveStdio(createServer);
-  console.error("state-machine MCP server running on stdio");
+  console.error("Step Switch MCP server running on stdio");
 }

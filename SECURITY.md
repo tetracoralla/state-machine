@@ -1,6 +1,10 @@
-# Security
+# Security policy
 
-State Machine treats Machine Specs, snapshots, events, and guard outcomes as
+## Supported version
+
+Security fixes target the latest release on the `main` branch.
+
+Step Switch treats Machine Specs, snapshots, events, and guard outcomes as
 untrusted data.
 
 - The core never evaluates JavaScript, expressions, callbacks, or regular
@@ -20,7 +24,13 @@ effect intent. A host that executes an effect is a separate security boundary
 and must validate current authorization, trusted facts, idempotency, and the
 exact pending action itself.
 
-For private vulnerability reporting, contact the repository owner through the
-private security-reporting route on the eventual source host. Do not publish
-exploit details in a public issue before a private route is available.
+## Report a vulnerability
 
+When private vulnerability reporting is enabled for
+`tetracoralla/state-machine`, use GitHub's **Report a vulnerability** button. If
+that private option is unavailable, open an issue containing no vulnerability
+details and ask the maintainers for a private contact route. Include the
+affected version, a minimal reproduction, expected impact, and any known
+workaround in the eventual private report. Do not put exploit details,
+credentials, production data, or third-party personal information in a public
+issue.

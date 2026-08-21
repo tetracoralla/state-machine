@@ -16,9 +16,10 @@ interface Position {
 
 const NODE_WIDTH = 164;
 const NODE_HEIGHT = 58;
-const COLUMN_GAP = 108;
+const COLUMN_GAP = 72;
 const ROW_GAP = 56;
-const PADDING = 56;
+const PADDING = 36;
+const MIN_RENDER_SCALE = 0.72;
 
 function graphLayout(machine: MachineSpec) {
   const levels = new Map<string, number>([[machine.initial, 0]]);
@@ -142,7 +143,13 @@ export function TopologyGraph({ machine, currentState }: TopologyGraphProps) {
         </div>
       )}
       <div className="graph-scroll" tabIndex={0} aria-label="State topology diagram">
-        <svg className="state-graph" viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-labelledby="graph-title graph-description">
+        <svg
+          className="state-graph"
+          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          role="img"
+          aria-labelledby="graph-title graph-description"
+          style={{ minWidth: `${Math.ceil(layout.width * MIN_RENDER_SCALE)}px` }}
+        >
           <title id="graph-title">{machine.title ?? machine.id} topology</title>
           <desc id="graph-description">States and directed event transitions. The current simulator state is highlighted.</desc>
           <defs>

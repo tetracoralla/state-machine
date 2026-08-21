@@ -20310,16 +20310,20 @@ var ValuePathSchema = string2().min(1).max(256).regex(/^[A-Za-z][A-Za-z0-9_-]*(?
   "Value path contains a reserved unsafe segment."
 );
 var BoundedStringSchema = string2().max(MODEL_LIMITS.maxStringLength);
+var JSON_COMPLEXITY_EXCEEDED = /* @__PURE__ */ Symbol("json_complexity_exceeded");
 var RawJsonValueSchema;
 RawJsonValueSchema = lazy(
-  () => union([
-    BoundedStringSchema,
-    number2().finite(),
-    boolean2(),
-    _null3(),
-    array(RawJsonValueSchema).max(1e3),
-    record(string2().max(256), RawJsonValueSchema)
-  ])
+  () => union(
+    [
+      BoundedStringSchema,
+      number2().finite(),
+      boolean2(),
+      _null3(),
+      array(RawJsonValueSchema).max(1e3),
+      record(string2().max(256), RawJsonValueSchema)
+    ],
+    { error: jsonComplexityIssue }
+  )
 );
 function jsonValuesWithinLimits(values) {
   const pending = values.map((value) => ({ value, depth: 1 }));
@@ -20340,13 +20344,24 @@ function jsonValuesWithinLimits(values) {
   }
   return true;
 }
+function jsonWithinByteLimit(value) {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength <= MODEL_LIMITS.maxRequestBytes;
+  } catch {
+    return false;
+  }
+}
+function jsonComplexityIssue(issue2) {
+  if (issue2.input !== JSON_COMPLEXITY_EXCEEDED) return void 0;
+  return `JSON value exceeds the cumulative ${MODEL_LIMITS.maxJsonNodes}-node or ${MODEL_LIMITS.maxJsonDepth}-level limit.`;
+}
 var JsonValueSchema = preprocess(
-  (value) => jsonValuesWithinLimits([value]) ? value : /* @__PURE__ */ Symbol("json_limit_exceeded"),
+  (value) => jsonValuesWithinLimits([value]) ? value : JSON_COMPLEXITY_EXCEEDED,
   RawJsonValueSchema
 );
 var JsonObjectSchema = preprocess(
-  (value) => jsonValuesWithinLimits([value]) ? value : /* @__PURE__ */ Symbol("json_limit_exceeded"),
-  record(string2().max(256), RawJsonValueSchema)
+  (value) => jsonValuesWithinLimits([value]) ? value : JSON_COMPLEXITY_EXCEEDED,
+  record(string2().max(256), RawJsonValueSchema, { error: jsonComplexityIssue })
 );
 var FieldDefinitionSchema = strictObject({
   type: _enum(["string", "number", "integer", "boolean", "object", "array"]),
@@ -20412,6 +20427,12 @@ var MachineSpecSchema = strictObject({
       message: `Machine JSON exceeds the cumulative ${MODEL_LIMITS.maxJsonNodes}-node or ${MODEL_LIMITS.maxJsonDepth}-level limit.`
     });
   }
+  if (!jsonWithinByteLimit(machine)) {
+    context.addIssue({
+      code: "custom",
+      message: `Machine JSON exceeds the ${MODEL_LIMITS.maxRequestBytes}-byte request limit.`
+    });
+  }
   const stateEntries = Object.entries(machine.states);
   const eventEntries = Object.entries(machine.events);
   const guardEntries = Object.entries(machine.guards ?? {});
@@ -20463,6 +20484,9 @@ var StepRequestSchema = strictObject({
   if (!jsonValuesWithinLimits([request.machine, request.snapshot, request.event, request.guard_results])) {
     context.addIssue({ code: "custom", message: "Step request exceeds the cumulative JSON complexity limit." });
   }
+  if (!jsonWithinByteLimit(request)) {
+    context.addIssue({ code: "custom", message: "Step request exceeds the cumulative request byte limit." });
+  }
 });
 var SimulationEventSchema = strictObject({
   event: EventInstanceSchema,
@@ -20477,18 +20501,24 @@ var SimulationRequestSchema = strictObject({
   if (!jsonValuesWithinLimits([request.machine, request.snapshot, request.events])) {
     context.addIssue({ code: "custom", message: "Simulation request exceeds the cumulative JSON complexity limit." });
   }
+  if (!jsonWithinByteLimit(request)) {
+    context.addIssue({ code: "custom", message: "Simulation request exceeds the cumulative request byte limit." });
+  }
 });
 var PathRequestSchema = strictObject({
   machine: MachineSpecSchema,
   target: IdentifierSchema,
   from: IdentifierSchema.optional(),
   max_depth: number2().int().min(0).max(MODEL_LIMITS.maxPathDepth).optional()
-});
+}).refine(jsonWithinByteLimit, "Path request exceeds the cumulative request byte limit.");
 var ValidationRequestSchema = strictObject({ machine: JsonObjectSchema });
-var InspectRequestSchema = strictObject({ machine: MachineSpecSchema });
+var InspectRequestSchema = strictObject({ machine: MachineSpecSchema }).refine(jsonWithinByteLimit, "Inspection request exceeds the cumulative request byte limit.");
 var DiffRequestSchema = strictObject({ before: MachineSpecSchema, after: MachineSpecSchema }).superRefine((request, context) => {
   if (!jsonValuesWithinLimits([request.before, request.after])) {
     context.addIssue({ code: "custom", message: "Diff request exceeds the cumulative JSON complexity limit." });
+  }
+  if (!jsonWithinByteLimit(request)) {
+    context.addIssue({ code: "custom", message: "Diff request exceeds the cumulative request byte limit." });
   }
 });
 var DiagnosticSchema = strictObject({
@@ -20607,6 +20637,13 @@ function runtimeError(code, message, details) {
   const error2 = { code, message };
   if (details && details.length > 0) error2.details = details;
   return { status: "error", error: error2 };
+}
+function boundedOperationResult(result) {
+  try {
+    if (new TextEncoder().encode(JSON.stringify(result)).byteLength <= MODEL_LIMITS.maxResponseBytes) return result;
+  } catch {
+  }
+  return runtimeError("RESPONSE_TOO_LARGE", "Result exceeds the complete response byte limit.");
 }
 
 // src/core/validation.ts
@@ -20915,7 +20952,7 @@ function validateParsedMachine(machine) {
     }
   }
   const limited = diagnostics.slice(0, MODEL_LIMITS.maxDiagnostics);
-  const hasErrors = limited.some((diagnostic) => diagnostic.severity === "error");
+  const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === "error");
   return {
     status: hasErrors ? "invalid" : "valid",
     machine_id: machine.id,
@@ -21141,7 +21178,7 @@ function resolveEffects(machine, state, event, snapshot) {
   }
   return output;
 }
-function stepValidatedMachine(machine, inputSnapshot, inputEvent, guardResults) {
+function computeValidatedStep(machine, inputSnapshot, inputEvent, guardResults) {
   const snapshot = { state: inputSnapshot.state, context: cloneObject(inputSnapshot.context) };
   const event = {
     type: inputEvent.type,
@@ -21198,6 +21235,9 @@ function stepValidatedMachine(machine, inputSnapshot, inputEvent, guardResults) 
     enabled_events: enabledEvents(machine, after.state)
   };
 }
+function stepValidatedMachine(machine, inputSnapshot, inputEvent, guardResults) {
+  return boundedOperationResult(computeValidatedStep(machine, inputSnapshot, inputEvent, guardResults));
+}
 function stepMachine(input) {
   const parsed = StepRequestSchema.safeParse(input);
   if (!parsed.success) return inputError(parsed.error.issues[0]?.message ?? "Step request is invalid.");
@@ -21241,8 +21281,17 @@ function simulateMachine(input) {
         break;
       }
     }
+    const bounded = boundedOperationResult({
+      status: "ok",
+      accepted,
+      initial,
+      final: current,
+      steps,
+      stopped_at: stoppedAt
+    });
+    if (bounded.status === "error") return bounded;
   }
-  return { status: "ok", accepted, initial, final: current, steps, stopped_at: stoppedAt };
+  return boundedOperationResult({ status: "ok", accepted, initial, final: current, steps, stopped_at: stoppedAt });
 }
 
 // src/model/version.ts
@@ -21306,15 +21355,15 @@ function respond(result, summary, outputSchema) {
   if (!outputSchema.safeParse(result).success) {
     return toolError("INTERNAL_OUTPUT_INVALID", "Tool result failed its executable output contract.");
   }
-  const serialized = JSON.stringify(result);
-  if (Buffer.byteLength(serialized) > MODEL_LIMITS.maxResponseBytes) {
-    return toolError("RESPONSE_TOO_LARGE", "Result exceeds the complete response byte limit.");
-  }
-  return {
+  const response = {
     content: [{ type: "text", text: summary }],
     structuredContent: result,
     ..."status" in result && result.status === "error" ? { isError: true } : {}
   };
+  if (Buffer.byteLength(JSON.stringify(response)) > MODEL_LIMITS.maxResponseBytes) {
+    return toolError("RESPONSE_TOO_LARGE", "Result exceeds the complete response byte limit.");
+  }
+  return response;
 }
 var annotations = {
   readOnlyHint: true,
@@ -21425,7 +21474,7 @@ function isDirectEntry() {
 }
 if (isDirectEntry()) {
   void serveStdio(createServer);
-  console.error("state-machine MCP server running on stdio");
+  console.error("Step Switch MCP server running on stdio");
 }
 export {
   TOOL_NAMES,

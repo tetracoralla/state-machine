@@ -1,21 +1,24 @@
 {
   "name": "state-machine",
   "version": "0.1.0",
-  "description": "Deterministically validate, step, simulate, inspect, diff, and find paths through finite-state Machine Specs.",
+  "description": "Step Switch deterministically validates, steps, simulates, inspects, diffs, and finds paths through finite-state Machine Specs.",
   "author": {
     "name": "openAdam",
     "url": "https://github.com/tetracoralla"
   },
+  "homepage": "https://github.com/tetracoralla/state-machine",
+  "repository": "https://github.com/tetracoralla/state-machine",
   "license": "Apache-2.0",
   "keywords": ["state-machine", "finite-state", "simulation", "agent-tools"],
   "skills": "./skills/",
   "interface": {
-    "displayName": "State Machine",
+    "displayName": "Step Switch",
     "shortDescription": "Make state transitions deterministic.",
-    "longDescription": "State Machine gives Codex read-only tools for validating finite-state Machine Specs, applying one event, simulating sequences, finding shortest structural paths, inspecting topology, and comparing semantic changes. Guards remain explicit inputs and effects are returned as intents only; the plugin never executes external actions.",
+    "longDescription": "Step Switch gives Codex read-only tools for validating finite-state Machine Specs, applying one event, simulating sequences, finding shortest structural paths, inspecting topology, and comparing semantic changes. Guards remain explicit inputs and effects are returned as intents only; the plugin never executes external actions.",
     "developerName": "openAdam",
     "category": "Productivity",
     "capabilities": ["Read"],
+    "websiteURL": "https://github.com/tetracoralla/state-machine",
     "defaultPrompt": [
       "Simulate these events through this state machine.",
       "Can this event happen from the current state?",

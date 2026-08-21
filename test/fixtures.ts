@@ -81,3 +81,16 @@ export function largeContextMachine(): MachineSpec {
   };
 }
 
+export function largeResponseMachine(): MachineSpec {
+  const data = Object.fromEntries(
+    Array.from({ length: 14 }, (_, index) => [`part_${index}`, "x".repeat(16_000)]),
+  );
+  return {
+    version: "0.1",
+    id: "large-response",
+    initial: "active",
+    context: { schema: { data: { type: "object" } }, initial: { data } },
+    events: { GO: {} },
+    states: { active: { on: { GO: { target: "active" } } } },
+  };
+}

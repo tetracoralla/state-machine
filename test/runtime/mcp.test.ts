@@ -6,7 +6,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
-import { largeContextMachine } from "../fixtures.js";
+import { largeContextMachine, largeResponseMachine } from "../fixtures.js";
 
 const root = resolve(import.meta.dirname, "../..");
 const pluginRoot = resolve(root, "plugins/state-machine");
@@ -188,5 +188,16 @@ describe("built plugin MCP stdio runtime", () => {
 
     expect(called.isError).toBe(true);
     expect(called.structuredContent).toMatchObject({ status: "error", error: { code: "REQUEST_TOO_LARGE" } });
+  });
+
+  it("replaces an oversized structured result with a bounded operation error", async () => {
+    const called = await client.callTool({
+      name: "machine.step",
+      arguments: { machine: largeResponseMachine(), event: { type: "GO" } },
+    });
+
+    expect(called.isError).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(called))).toBeLessThanOrEqual(256 * 1024);
+    expect(called.structuredContent).toMatchObject({ status: "error", error: { code: "RESPONSE_TOO_LARGE" } });
   });
 });

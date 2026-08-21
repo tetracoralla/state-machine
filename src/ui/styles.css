@@ -32,6 +32,33 @@ body,
   margin: 0;
 }
 
+html {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+* {
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--line-strong);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 body {
   min-height: 100vh;
   background:
@@ -239,7 +266,7 @@ summary:focus-visible {
 
 .editor-grid {
   display: grid;
-  grid-template-columns: minmax(380px, 0.42fr) minmax(520px, 0.58fr);
+  grid-template-columns: minmax(380px, 0.36fr) minmax(620px, 0.64fr);
   gap: 14px;
   min-height: 500px;
 }
@@ -476,6 +503,7 @@ summary:focus-visible {
 .graph-scroll {
   min-height: 390px;
   overflow: auto;
+  touch-action: pan-x pan-y;
   background:
     radial-gradient(circle at center, rgba(47, 45, 40, 0.1) 0.7px, transparent 0.8px) 0 0 / 18px 18px,
     #f4f2ec;
@@ -483,7 +511,7 @@ summary:focus-visible {
 
 .state-graph {
   display: block;
-  width: max(100%, 760px);
+  width: 100%;
   min-height: 100%;
 }
 
@@ -922,6 +950,20 @@ summary:focus-visible {
   min-height: 128px;
 }
 
+@media (max-width: 1380px) {
+  .editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .definition-stack {
+    min-height: 560px;
+  }
+
+  .topology-panel {
+    min-height: 500px;
+  }
+}
+
 @media (max-width: 1120px) {
   .toolbar {
     align-items: flex-start;
@@ -930,10 +972,6 @@ summary:focus-visible {
   .toolbar-actions {
     flex-wrap: wrap;
     justify-content: flex-end;
-  }
-
-  .editor-grid {
-    grid-template-columns: minmax(340px, 0.46fr) minmax(420px, 0.54fr);
   }
 
   .simulator-layout {
@@ -967,18 +1005,6 @@ summary:focus-visible {
 
   .workspace {
     padding: 10px;
-  }
-
-  .editor-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .definition-stack {
-    min-height: 560px;
-  }
-
-  .topology-panel {
-    min-height: 500px;
   }
 
   .simulator-layout {

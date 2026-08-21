@@ -36,7 +36,7 @@ export function Toolbar({
       <div className="product-lockup">
         <span className="product-mark" aria-hidden="true">S</span>
         <div>
-          <p className="product-name">State Machine</p>
+          <p className="product-name">Step Switch</p>
           <p className="machine-title">{machineTitle}</p>
         </div>
       </div>
@@ -51,10 +51,8 @@ export function Toolbar({
         </div>
         <input
           ref={fileInput}
-          className="visually-hidden"
           type="file"
-          tabIndex={-1}
-          aria-hidden="true"
+          hidden
           accept=".yaml,.yml,.json,application/json,text/yaml"
           onChange={(event) => void handleFile(event.target.files?.[0])}
         />

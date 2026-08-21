@@ -11,7 +11,7 @@ import type {
   StepResult,
   ValueSource,
 } from "../model/types.js";
-import { inputError, machineError, runtimeError } from "./operation-error.js";
+import { boundedOperationResult, inputError, machineError, runtimeError } from "./operation-error.js";
 import { cloneObject, resolveValueSource } from "./value-source.js";
 import { validateFields, validateParsedMachine } from "./validation.js";
 
@@ -82,7 +82,7 @@ function resolveEffects(
   return output;
 }
 
-export function stepValidatedMachine(
+function computeValidatedStep(
   machine: MachineSpec,
   inputSnapshot: Snapshot,
   inputEvent: EventInstance,
@@ -146,6 +146,15 @@ export function stepValidatedMachine(
     effects,
     enabled_events: enabledEvents(machine, after.state),
   };
+}
+
+export function stepValidatedMachine(
+  machine: MachineSpec,
+  inputSnapshot: Snapshot,
+  inputEvent: EventInstance,
+  guardResults?: Record<string, boolean>,
+): StepResult {
+  return boundedOperationResult(computeValidatedStep(machine, inputSnapshot, inputEvent, guardResults));
 }
 
 export function stepMachine(input: StepRequest | unknown): StepResult {

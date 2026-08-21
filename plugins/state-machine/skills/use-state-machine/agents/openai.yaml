@@ -1,5 +1,5 @@
 interface:
-  display_name: "State Machine"
+  display_name: "Step Switch"
   short_description: "Run deterministic state transitions and simulations."
   default_prompt: "Use $use-state-machine to simulate this event sequence."
 

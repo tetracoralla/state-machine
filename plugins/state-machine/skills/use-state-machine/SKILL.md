@@ -1,9 +1,9 @@
 ---
 name: use-state-machine
-description: Use the State Machine tools for concrete finite-state Machine Specs when an event must be accepted or rejected deterministically, a sequence should be simulated without side effects, a path to a state is needed, or a machine needs validation, inspection, or semantic comparison. Do not use for open-ended workflow design or to execute returned effects.
+description: Use the Step Switch tools for concrete finite-state Machine Specs when an event must be accepted or rejected deterministically, a sequence should be simulated without side effects, a path to a state is needed, or a machine needs validation, inspection, or semantic comparison. Do not use for open-ended workflow design or to execute returned effects.
 ---
 
-# Use State Machine
+# Use Step Switch
 
 Call the operation that answers the user's task directly:
 

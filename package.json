@@ -2,16 +2,32 @@
   "name": "@openadam/state-machine",
   "version": "0.1.0",
   "private": true,
-  "description": "A deterministic, side-effect-free state transition kernel with CLI, MCP, and a visual editor and simulator.",
+  "description": "Step Switch is a deterministic, side-effect-free state transition kernel with CLI, MCP, and a visual editor and simulator.",
   "type": "module",
   "license": "Apache-2.0",
+  "keywords": [
+    "state-machine",
+    "finite-state-machine",
+    "mcp",
+    "codex-plugin",
+    "simulation"
+  ],
   "author": {
     "name": "openAdam",
     "url": "https://github.com/tetracoralla"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tetracoralla/state-machine.git"
+  },
+  "homepage": "https://github.com/tetracoralla/state-machine#readme",
+  "bugs": {
+    "url": "https://github.com/tetracoralla/state-machine/issues"
+  },
   "engines": {
     "node": ">=22"
   },
+  "packageManager": "npm@10.9.4",
   "bin": {
     "state-machine": "./dist/node/adapters/cli.js",
     "state-machine-mcp": "./dist/node/adapters/mcp.js",
@@ -25,12 +41,18 @@
   },
   "files": [
     "dist",
-    "docs",
+    "docs/MACHINE_SPEC.md",
+    "docs/PRODUCT_IDENTITY.md",
+    "docs/PRODUCT_MODEL.md",
+    "docs/RELEASE.md",
+    "docs/REVIEW_CONTRACT.md",
     "schemas",
     "examples",
     "plugins/state-machine",
+    "CHANGELOG.md",
     "LICENSE",
     "NOTICE",
+    "plugins/state-machine/THIRD_PARTY_NOTICES.md",
     "README.md"
   ],
   "scripts": {
@@ -38,15 +60,19 @@
     "build:node": "tsc -p tsconfig.build.json",
     "build:ui": "vite build",
     "build:plugin": "esbuild src/adapters/mcp.ts --bundle --platform=node --target=node22 --format=esm --outfile=plugins/state-machine/server/index.mjs",
-    "check": "npm run typecheck && npm run test && npm run check:schemas && npm run check:clean-safety && npm run build && npm run test:runtime && npm run test:ui && npm run check:contracts && npm run check:plugin",
+    "check": "npm run typecheck && npm run test && npm run check:schemas && npm run check:licenses && npm run check:clean-safety && npm run check:release-hygiene && npm run build && npm run test:runtime && npm run check:package && npm run test:ui && npm run check:contracts && npm run check:plugin",
     "check:clean-safety": "node scripts/check-clean-safety.mjs",
     "check:contracts": "node scripts/check-contracts.mjs",
+    "check:licenses": "node scripts/generate-third-party-notices.mjs --check",
+    "check:package": "node scripts/check-package.mjs",
     "check:plugin": "node scripts/check-plugin.mjs",
+    "check:release-hygiene": "node scripts/check-release-hygiene.mjs",
     "check:schemas": "node --import tsx scripts/generate-schemas.ts --check",
     "clean": "node scripts/clean.mjs",
     "cli": "node dist/node/adapters/cli.js",
     "dev:ui": "vite",
     "generate:schemas": "node --import tsx scripts/generate-schemas.ts",
+    "generate:licenses": "node scripts/generate-third-party-notices.mjs",
     "mcp": "node dist/node/adapters/mcp.js",
     "start:ui": "node dist/node/adapters/web-server.js",
     "test": "vitest run --no-file-parallelism",
@@ -58,7 +84,7 @@
     "@modelcontextprotocol/server": "^2.0.0",
     "react": "19.1.1",
     "react-dom": "19.1.1",
-    "yaml": "2.8.1",
+    "yaml": "2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

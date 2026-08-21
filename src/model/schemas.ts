@@ -39,17 +39,21 @@ export const ValuePathSchema = z
   );
 
 const BoundedStringSchema = z.string().max(MODEL_LIMITS.maxStringLength);
+const JSON_COMPLEXITY_EXCEEDED = Symbol("json_complexity_exceeded");
 
 let RawJsonValueSchema: z.ZodType<JsonValue>;
 RawJsonValueSchema = z.lazy(() =>
-  z.union([
-    BoundedStringSchema,
-    z.number().finite(),
-    z.boolean(),
-    z.null(),
-    z.array(RawJsonValueSchema).max(1_000),
-    z.record(z.string().max(256), RawJsonValueSchema),
-  ]),
+  z.union(
+    [
+      BoundedStringSchema,
+      z.number().finite(),
+      z.boolean(),
+      z.null(),
+      z.array(RawJsonValueSchema).max(1_000),
+      z.record(z.string().max(256), RawJsonValueSchema),
+    ],
+    { error: jsonComplexityIssue },
+  ),
 );
 
 function jsonValuesWithinLimits(values: unknown[]): boolean {
@@ -72,14 +76,27 @@ function jsonValuesWithinLimits(values: unknown[]): boolean {
   return true;
 }
 
+function jsonWithinByteLimit(value: unknown): boolean {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength <= MODEL_LIMITS.maxRequestBytes;
+  } catch {
+    return false;
+  }
+}
+
+function jsonComplexityIssue(issue: { input?: unknown }): string | undefined {
+  if (issue.input !== JSON_COMPLEXITY_EXCEEDED) return undefined;
+  return `JSON value exceeds the cumulative ${MODEL_LIMITS.maxJsonNodes}-node or ${MODEL_LIMITS.maxJsonDepth}-level limit.`;
+}
+
 export const JsonValueSchema = z.preprocess(
-  (value) => (jsonValuesWithinLimits([value]) ? value : Symbol("json_limit_exceeded")),
+  (value) => (jsonValuesWithinLimits([value]) ? value : JSON_COMPLEXITY_EXCEEDED),
   RawJsonValueSchema,
 ) as z.ZodType<JsonValue>;
 
 export const JsonObjectSchema = z.preprocess(
-  (value) => (jsonValuesWithinLimits([value]) ? value : Symbol("json_limit_exceeded")),
-  z.record(z.string().max(256), RawJsonValueSchema),
+  (value) => (jsonValuesWithinLimits([value]) ? value : JSON_COMPLEXITY_EXCEEDED),
+  z.record(z.string().max(256), RawJsonValueSchema, { error: jsonComplexityIssue }),
 ) as z.ZodType<JsonObject>;
 
 export const FieldDefinitionSchema = z.strictObject({
@@ -160,6 +177,12 @@ export const MachineSpecSchema = z
         message: `Machine JSON exceeds the cumulative ${MODEL_LIMITS.maxJsonNodes}-node or ${MODEL_LIMITS.maxJsonDepth}-level limit.`,
       });
     }
+    if (!jsonWithinByteLimit(machine)) {
+      context.addIssue({
+        code: "custom",
+        message: `Machine JSON exceeds the ${MODEL_LIMITS.maxRequestBytes}-byte request limit.`,
+      });
+    }
     const stateEntries = Object.entries(machine.states);
     const eventEntries = Object.entries(machine.events);
     const guardEntries = Object.entries(machine.guards ?? {});
@@ -217,6 +240,9 @@ export const StepRequestSchema = z
     if (!jsonValuesWithinLimits([request.machine, request.snapshot, request.event, request.guard_results])) {
       context.addIssue({ code: "custom", message: "Step request exceeds the cumulative JSON complexity limit." });
     }
+    if (!jsonWithinByteLimit(request)) {
+      context.addIssue({ code: "custom", message: "Step request exceeds the cumulative request byte limit." });
+    }
   });
 
 export const SimulationEventSchema = z.strictObject({
@@ -235,22 +261,32 @@ export const SimulationRequestSchema = z
     if (!jsonValuesWithinLimits([request.machine, request.snapshot, request.events])) {
       context.addIssue({ code: "custom", message: "Simulation request exceeds the cumulative JSON complexity limit." });
     }
+    if (!jsonWithinByteLimit(request)) {
+      context.addIssue({ code: "custom", message: "Simulation request exceeds the cumulative request byte limit." });
+    }
   });
 
-export const PathRequestSchema = z.strictObject({
-  machine: MachineSpecSchema,
-  target: IdentifierSchema,
-  from: IdentifierSchema.optional(),
-  max_depth: z.number().int().min(0).max(MODEL_LIMITS.maxPathDepth).optional(),
-});
+export const PathRequestSchema = z
+  .strictObject({
+    machine: MachineSpecSchema,
+    target: IdentifierSchema,
+    from: IdentifierSchema.optional(),
+    max_depth: z.number().int().min(0).max(MODEL_LIMITS.maxPathDepth).optional(),
+  })
+  .refine(jsonWithinByteLimit, "Path request exceeds the cumulative request byte limit.");
 
 export const ValidationRequestSchema = z.strictObject({ machine: JsonObjectSchema });
-export const InspectRequestSchema = z.strictObject({ machine: MachineSpecSchema });
+export const InspectRequestSchema = z
+  .strictObject({ machine: MachineSpecSchema })
+  .refine(jsonWithinByteLimit, "Inspection request exceeds the cumulative request byte limit.");
 export const DiffRequestSchema = z
   .strictObject({ before: MachineSpecSchema, after: MachineSpecSchema })
   .superRefine((request, context) => {
     if (!jsonValuesWithinLimits([request.before, request.after])) {
       context.addIssue({ code: "custom", message: "Diff request exceeds the cumulative JSON complexity limit." });
+    }
+    if (!jsonWithinByteLimit(request)) {
+      context.addIssue({ code: "custom", message: "Diff request exceeds the cumulative request byte limit." });
     }
   });
 

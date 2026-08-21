@@ -1,6 +1,6 @@
 import { SimulationRequestSchema } from "../model/schemas.js";
 import type { OperationError, SimulationRequest, SimulationResult, StepRejection, StepSuccess } from "../model/types.js";
-import { machineError } from "./operation-error.js";
+import { boundedOperationResult, machineError } from "./operation-error.js";
 import { initialSnapshot, stepValidatedMachine, validateSnapshotForMachine } from "./step.js";
 import { cloneObject } from "./value-source.js";
 import { validateParsedMachine } from "./validation.js";
@@ -40,7 +40,16 @@ export function simulateMachine(input: SimulationRequest | unknown): SimulationR
         break;
       }
     }
+    const bounded = boundedOperationResult({
+      status: "ok" as const,
+      accepted,
+      initial,
+      final: current,
+      steps,
+      stopped_at: stoppedAt,
+    });
+    if (bounded.status === "error") return bounded;
   }
 
-  return { status: "ok", accepted, initial, final: current, steps, stopped_at: stoppedAt };
+  return boundedOperationResult({ status: "ok", accepted, initial, final: current, steps, stopped_at: stoppedAt });
 }

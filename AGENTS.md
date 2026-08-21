@@ -1,4 +1,4 @@
-# State Machine repository contract
+# Step Switch repository contract
 
 ## Product boundary
 
@@ -39,4 +39,3 @@ runtime surfaces work. Business/experience acceptance remains the owner's
 judgment after opening the current interface.
 
 Do not commit automatically.
-

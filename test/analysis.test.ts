@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { diffMachines, findPath, inspectMachine, reachableStates, simulateMachine, stepMachine } from "../src/index.js";
+import { MODEL_LIMITS } from "../src/model/schemas.js";
 import type { MachineSpec } from "../src/model/types.js";
 import { largeContextMachine, orderMachine, paymentEvent } from "./fixtures.js";
 
@@ -11,6 +12,17 @@ describe("simulation and graph analysis", () => {
     const result = simulateMachine({ machine, events: [{ event: { type: "GO" } }] });
     expect(direct).toMatchObject({ status: "ok", accepted: true, after: { state: "done" } });
     expect(result).toMatchObject({ status: "ok", accepted: true, final: { state: "done" } });
+  });
+
+  it("stops before repeated snapshots amplify a simulation beyond the response budget", () => {
+    const machine = largeContextMachine();
+    machine.states.pending = { on: { GO: { target: "pending" } } };
+    const result = simulateMachine({
+      machine,
+      events: Array.from({ length: 12 }, () => ({ event: { type: "GO" } })),
+    });
+    expect(result).toMatchObject({ status: "error", error: { code: "RESPONSE_TOO_LARGE" } });
+    expect(new TextEncoder().encode(JSON.stringify(result)).byteLength).toBeLessThanOrEqual(MODEL_LIMITS.maxResponseBytes);
   });
 
   it("validates the machine even when a simulation has no events", () => {

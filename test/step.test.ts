@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { enabledEvents, stepMachine } from "../src/index.js";
-import { orderMachine, paymentEvent } from "./fixtures.js";
+import { largeResponseMachine, orderMachine, paymentEvent } from "./fixtures.js";
 
 describe("stepMachine", () => {
   it("applies a guarded transition, assignments, and symbolic effects", () => {
@@ -100,6 +100,13 @@ describe("stepMachine", () => {
 
   it("sorts structurally enabled events deterministically", () => {
     expect(enabledEvents(orderMachine(), "paid")).toEqual(["CANCEL", "START_FULFILLMENT"]);
+  });
+
+  it("bounds the complete result in the shared core", () => {
+    expect(stepMachine({ machine: largeResponseMachine(), event: { type: "GO" } })).toMatchObject({
+      status: "error",
+      error: { code: "RESPONSE_TOO_LARGE" },
+    });
   });
 
   it("treats Object.prototype member names as undeclared events and transitions", () => {

@@ -1,0 +1,64 @@
+import { spawnSync } from "node:child_process";
+import { lstatSync, readFileSync } from "node:fs";
+import { basename } from "node:path";
+
+const listed = spawnSync(
+  "git",
+  ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+  { encoding: "buffer" },
+);
+if (listed.status !== 0) {
+  process.stderr.write(listed.stderr?.toString("utf8") || "could not enumerate release files\n");
+  process.exit(1);
+}
+
+const failures = [];
+const files = listed.stdout
+  .toString("utf8")
+  .split("\0")
+  .filter(Boolean);
+const sensitiveNames = /^(?:\.env(?:\..+)?|id_(?:rsa|dsa|ecdsa|ed25519)|credentials(?:\..+)?|secrets?(?:\..+)?)$/i;
+const secretPatterns = [
+  /-----BEGIN (?:RSA|OPENSSH|EC|DSA) PRIVATE KEY-----/,
+  /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
+  /\bsk-[A-Za-z0-9_-]{20,}\b/,
+  /\bAKIA[0-9A-Z]{16}\b/,
+];
+const localPathPatterns = [
+  /\/Users\/[^/\s]+\//,
+  /\/home\/[^/\s]+\//,
+  /[A-Za-z]:\\Users\\[^\\\s]+\\/,
+];
+
+for (const file of files) {
+  const metadata = lstatSync(file);
+  if (metadata.isSymbolicLink()) {
+    failures.push(`${file}: symbolic links must not be released`);
+    continue;
+  }
+  if (!metadata.isFile()) {
+    failures.push(`${file}: release candidate is not a regular file`);
+    continue;
+  }
+  if (file.startsWith("node_modules/") || file.startsWith("dist/")) {
+    failures.push(`${file}: generated dependency or build directory must not be released`);
+  }
+  if (file.endsWith(".map") || file.endsWith(".tgz")) {
+    failures.push(`${file}: generated source map or package archive must not be released`);
+  }
+  if (sensitiveNames.test(basename(file)) && !file.endsWith(".example")) {
+    failures.push(`${file}: sensitive filename must not be released`);
+  }
+
+  const content = readFileSync(file);
+  if (content.includes(0)) continue;
+  const text = content.toString("utf8");
+  if (secretPatterns.some((pattern) => pattern.test(text))) failures.push(`${file}: possible credential material found`);
+  if (localPathPatterns.some((pattern) => pattern.test(text))) failures.push(`${file}: machine-local absolute path found`);
+}
+
+if (failures.length > 0) {
+  for (const failure of failures) process.stderr.write(`release hygiene failure: ${failure}\n`);
+  process.exit(1);
+}
+process.stdout.write(`release hygiene checks passed (${files.length} candidate files)\n`);

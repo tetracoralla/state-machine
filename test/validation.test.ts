@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { MachineSpecSchema, StepRequestSchema, stepMachine, validateMachine } from "../src/index.js";
-import type { MachineSpec } from "../src/index.js";
+import type { JsonObject, MachineSpec } from "../src/index.js";
 import { orderMachine } from "./fixtures.js";
 
 describe("validateMachine", () => {
@@ -115,6 +115,73 @@ describe("validateMachine", () => {
         event: { type: "CANCEL" },
       }).success,
     ).toBe(false);
+  });
+
+  it("reports JSON complexity overruns without leaking the internal sentinel", () => {
+    const machine = orderMachine();
+    let deep: JsonObject = {};
+    for (let index = 0; index < 40; index += 1) deep = { nested: deep };
+    machine.context = { ...machine.context, initial: { data: deep } };
+    const parsed = MachineSpecSchema.safeParse(machine);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      const messages = parsed.error.issues.map((issue) => issue.message).join("\n");
+      expect(messages).toContain("32-level");
+      expect(messages).not.toContain("symbol");
+    }
+    const result = validateMachine(machine);
+    expect(result.status).toBe("invalid");
+    expect(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n")).not.toContain("symbol");
+  });
+
+  it("does not misclassify a caller-provided symbol as a complexity overrun", () => {
+    const parsed = MachineSpecSchema.safeParse({
+      ...orderMachine(),
+      context: {
+        ...orderMachine().context,
+        initial: { amount: Symbol("caller-input"), paid: false },
+      },
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.map((issue) => issue.message).join("\n")).not.toContain("cumulative");
+    }
+  });
+
+  it("enforces the request byte budget in the public library schemas", () => {
+    const machineWithValue = (value: Record<string, string>): MachineSpec => ({
+      version: "0.1",
+      id: "byte-limit",
+      initial: "start",
+      context: { schema: { data: { type: "object" } }, initial: { data: value } },
+      events: { GO: {} },
+      states: { start: { on: { GO: { target: "done" } } }, done: { final: true } },
+    });
+    const moderateValue = Object.fromEntries(
+      Array.from({ length: 9 }, (_, index) => [`part_${index}`, "x".repeat(16_000)]),
+    );
+    const machine = machineWithValue(moderateValue);
+
+    expect(MachineSpecSchema.safeParse(machine).success).toBe(true);
+    expect(
+      StepRequestSchema.safeParse({
+        machine,
+        snapshot: { state: "start", context: { data: moderateValue } },
+        event: { type: "GO" },
+      }).success,
+    ).toBe(false);
+    expect(
+      stepMachine({
+        machine,
+        snapshot: { state: "start", context: { data: moderateValue } },
+        event: { type: "GO" },
+      }),
+    ).toMatchObject({ status: "error", error: { code: "INPUT_INVALID" } });
+
+    const oversizedMachine = machineWithValue(
+      Object.fromEntries(Array.from({ length: 17 }, (_, index) => [`part_${index}`, "x".repeat(16_000)])),
+    );
+    expect(MachineSpecSchema.safeParse(oversizedMachine).success).toBe(false);
   });
 
   it("treats Object.prototype member names as nonexistent states", () => {
