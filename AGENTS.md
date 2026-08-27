@@ -1,5 +1,10 @@
 # Step Switch repository contract
 
+Before any review, read `docs/REVIEW_CONTRACT.md`. A plain owner request to
+review, audit, 审核, or 复核 invokes that contract end to end; treat it as the
+minimum scope and report `tools-dev workspace escalations` without asking the
+owner for another checklist.
+
 ## Product boundary
 
 This repository owns a deterministic finite-state transition kernel and two
