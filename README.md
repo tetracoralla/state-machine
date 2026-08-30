@@ -158,7 +158,7 @@ XState/SCXML compatibility claims. The current product boundary is maintained in
 
 ## License
 
-Step Switch is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE)
-and [`NOTICE`](NOTICE). The standalone plugin includes its own copies plus the
-license and attribution text for software bundled into the browser and MCP
-distributions.
+Step Switch is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE),
+[`NOTICE`](NOTICE), and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+The standalone plugin includes synchronized copies plus the legal comments and
+full license text for its bundled runtime.

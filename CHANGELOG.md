@@ -2,7 +2,17 @@
 
 All notable changes to Step Switch are documented here.
 
-## 0.1.0 - Unreleased
+## 0.1.1 - Unreleased
+
+- Capped raw MCP stdio messages before the SDK's larger default buffer can
+  accumulate them.
+- Cleared stale path results whenever the simulator advances to another state.
+- Completed standalone plugin license attribution and pinned CI supply-chain
+  dependencies.
+- Coordinated the React, Vite, React plugin, and DOM test-runtime updates that
+  were unsafe as separate automated dependency pull requests.
+
+## 0.1.0 - 2026-08-21
 
 - Adopted **Step Switch** as the display brand while preserving the stable
   `state-machine` package, CLI, plugin, Skill, MCP server, configuration, and
