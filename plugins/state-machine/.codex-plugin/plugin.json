@@ -1,6 +1,6 @@
 {
   "name": "state-machine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Step Switch deterministically validates, steps, simulates, inspects, diffs, and finds paths through finite-state Machine Specs.",
   "author": {
     "name": "openAdam",

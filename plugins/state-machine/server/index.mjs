@@ -21295,7 +21295,7 @@ function simulateMachine(input) {
 }
 
 // src/model/version.ts
-var SERVER_VERSION = "0.1.0";
+var SERVER_VERSION = "0.1.1";
 
 // src/presentation.ts
 function presentValidation(result) {
@@ -21340,6 +21340,12 @@ var TOOL_NAMES = [
   "machine.inspect",
   "machine.diff"
 ];
+var MCP_TRANSPORT_MAX_BUFFER_BYTES = MODEL_LIMITS.maxRequestBytes + 64 * 1024;
+function createBoundedStdioTransport(input = process.stdin, output = process.stdout) {
+  return new StdioServerTransport(input, output, {
+    maxBufferSize: MCP_TRANSPORT_MAX_BUFFER_BYTES
+  });
+}
 function requestWithinLimit(input) {
   return Buffer.byteLength(JSON.stringify(input)) <= MODEL_LIMITS.maxRequestBytes;
 }
@@ -21473,19 +21479,12 @@ function isDirectEntry() {
   }
 }
 if (isDirectEntry()) {
-  void serveStdio(createServer);
+  void serveStdio(createServer, { transport: createBoundedStdioTransport() });
   console.error("Step Switch MCP server running on stdio");
 }
 export {
+  MCP_TRANSPORT_MAX_BUFFER_BYTES,
   TOOL_NAMES,
+  createBoundedStdioTransport,
   createServer
 };
-/*! Bundled license information:
-
-@modelcontextprotocol/server/dist/src-CX2iR2pK.mjs:
-  (*!
-  * content-type
-  * Copyright(c) 2015 Douglas Christopher Wilson
-  * MIT Licensed
-  *)
-*/

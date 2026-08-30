@@ -27,8 +27,10 @@ transition with an irrelevant invalid payload, a required guard without an
 outcome, and a guard rejection. Call `machine.simulate` with a valid sequence
 followed by a blocked event and with one event near the cumulative complexity
 limit. Inputs above the declared limits and unknown fields must fail before
-execution. The complete six-tool catalog must remain at or below 36 KiB. Built
-CLI operation errors must exit `1`; command and file usage errors must exit `2`.
+execution. The stdio transport must also close any raw protocol message above
+320 KiB before the SDK's larger default buffer can accumulate it. The complete
+six-tool catalog must remain at or below 36 KiB. Built CLI operation errors must
+exit `1`; command and file usage errors must exit `2`.
 Unknown, duplicate, missing-value, and out-of-range CLI options must fail as
 usage errors rather than being ignored or reaching the kernel.
 

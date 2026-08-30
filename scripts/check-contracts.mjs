@@ -11,6 +11,8 @@ const marketplaceJson = JSON.parse(readFileSync(resolve(root, ".agents/plugins/m
 const mcpJson = JSON.parse(readFileSync(resolve(pluginRoot, ".mcp.json"), "utf8"));
 const skill = readFileSync(resolve(pluginRoot, "skills/use-state-machine/SKILL.md"), "utf8");
 const readme = readFileSync(resolve(root, "README.md"), "utf8");
+const rootThirdPartyNotices = readFileSync(resolve(root, "THIRD_PARTY_NOTICES.md"), "utf8");
+const pluginThirdPartyNotices = readFileSync(resolve(pluginRoot, "THIRD_PARTY_NOTICES.md"), "utf8");
 const productIdentity = readFileSync(resolve(root, "docs/PRODUCT_IDENTITY.md"), "utf8");
 const releaseProcess = readFileSync(resolve(root, "docs/RELEASE.md"), "utf8");
 const mcpSource = readFileSync(resolve(root, "src/adapters/mcp.ts"), "utf8");
@@ -26,6 +28,7 @@ if (packageJson.private !== true) failures.push("package must remain private for
 if (packageJson.repository?.url !== "git+https://github.com/tetracoralla/state-machine.git") failures.push("repository URL differs");
 if (packageJson.homepage !== "https://github.com/tetracoralla/state-machine#readme") failures.push("homepage URL differs");
 if (packageLock.includes("registry.npmmirror.com")) failures.push("package lock contains a non-canonical registry host");
+if (rootThirdPartyNotices !== pluginThirdPartyNotices) failures.push("root and plugin third-party notices differ");
 if (packageJson.bin?.["state-machine"] !== "./dist/node/adapters/cli.js") failures.push("CLI entry differs");
 if (packageJson.bin?.["state-machine-mcp"] !== "./dist/node/adapters/mcp.js") failures.push("MCP entry differs");
 if (pluginJson.name !== "state-machine") failures.push("plugin identity differs");
@@ -86,6 +89,8 @@ for (const filename of [
   "plugins/state-machine/LICENSE",
   "plugins/state-machine/NOTICE",
   "plugins/state-machine/THIRD_PARTY_NOTICES.md",
+  "plugins/state-machine/server/index.mjs.LEGAL.txt",
+  "THIRD_PARTY_NOTICES.md",
   "docs/PRODUCT_IDENTITY.md",
   "docs/RELEASE.md",
 ]) {

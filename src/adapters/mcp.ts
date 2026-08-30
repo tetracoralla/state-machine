@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
+import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 import { McpServer } from "@modelcontextprotocol/server";
-import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import { serveStdio, StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import type * as z from "zod/v4";
 
 import { diffMachines, findPath, inspectMachine, simulateMachine, stepMachine, validateMachine } from "../index.js";
@@ -41,6 +42,17 @@ export const TOOL_NAMES = [
   "machine.inspect",
   "machine.diff",
 ] as const;
+
+export const MCP_TRANSPORT_MAX_BUFFER_BYTES = MODEL_LIMITS.maxRequestBytes + 64 * 1024;
+
+export function createBoundedStdioTransport(
+  input: Readable = process.stdin,
+  output: Writable = process.stdout,
+): StdioServerTransport {
+  return new StdioServerTransport(input, output, {
+    maxBufferSize: MCP_TRANSPORT_MAX_BUFFER_BYTES,
+  });
+}
 
 function requestWithinLimit(input: unknown): boolean {
   return Buffer.byteLength(JSON.stringify(input)) <= MODEL_LIMITS.maxRequestBytes;
@@ -189,6 +201,6 @@ function isDirectEntry(): boolean {
 }
 
 if (isDirectEntry()) {
-  void serveStdio(createServer);
+  void serveStdio(createServer, { transport: createBoundedStdioTransport() });
   console.error("Step Switch MCP server running on stdio");
 }

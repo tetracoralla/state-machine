@@ -103,7 +103,7 @@ export function TopologyGraph({ machine, currentState }: TopologyGraphProps) {
   useEffect(() => {
     if (!machine.states[target]) setTarget(stateIds.find((id) => machine.states[id]?.final) ?? stateIds[0] ?? "");
     setPath(null);
-  }, [machine, stateIds, target]);
+  }, [currentState, machine, stateIds, target]);
 
   function calculatePath() {
     const result = findPath({ machine, from: currentState, target });

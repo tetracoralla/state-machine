@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 const root = process.cwd();
 const pluginRoot = resolve(root, "plugins/state-machine");
 const bundledServer = resolve(pluginRoot, "server/index.mjs");
+const bundledServerLegal = resolve(pluginRoot, "server/index.mjs.LEGAL.txt");
 const plugin = JSON.parse(readFileSync(resolve(pluginRoot, ".codex-plugin/plugin.json"), "utf8"));
 const transport = JSON.parse(readFileSync(resolve(pluginRoot, ".mcp.json"), "utf8"));
 const skill = readFileSync(resolve(pluginRoot, "skills/use-state-machine/SKILL.md"), "utf8");
@@ -31,6 +32,9 @@ if (!existsSync(notice)) failures.push("NOTICE is missing from the standalone pl
 if (!existsSync(notices)) failures.push("third-party notices are missing from the standalone plugin");
 const bundledServerExists = existsSync(bundledServer);
 if (!bundledServerExists) failures.push("bundled MCP server is missing");
+if (!existsSync(bundledServerLegal) || readFileSync(bundledServerLegal, "utf8").trim().length === 0) {
+  failures.push("bundled MCP server legal comments are missing");
+}
 if (!skill.startsWith("---\nname: use-state-machine\n")) failures.push("Skill frontmatter or name differs");
 if (!metadata.includes('value: "state_machine"')) failures.push("Skill does not declare the MCP dependency");
 if (skill.includes("TODO") || metadata.includes("TODO")) failures.push("plugin contains unfinished placeholders");
@@ -52,6 +56,7 @@ if (!existsSync(esbuildBin)) {
         "--platform=node",
         "--target=node22",
         "--format=esm",
+        "--legal-comments=external",
         `--outfile=${rebuilt}`,
       ],
       { encoding: "utf8" },
@@ -60,6 +65,11 @@ if (!existsSync(esbuildBin)) {
       failures.push(`bundled MCP server could not be rebuilt: ${result.stderr}`);
     } else if (bundledServerExists && readFileSync(rebuilt, "utf8") !== readFileSync(bundledServer, "utf8")) {
       failures.push("bundled MCP server is stale; run npm run build:plugin");
+    } else if (
+      bundledServerExists &&
+      readFileSync(`${rebuilt}.LEGAL.txt`, "utf8") !== readFileSync(bundledServerLegal, "utf8")
+    ) {
+      failures.push("bundled MCP server legal comments are stale; run npm run build:plugin");
     }
   } finally {
     const resolvedScratch = realpathSync(scratch);

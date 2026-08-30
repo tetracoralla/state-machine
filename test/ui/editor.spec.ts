@@ -52,6 +52,21 @@ test("shows guard rejections and resolved context and effect inputs", async ({ p
   await expect(details).toContainText('"paid": true');
 });
 
+test("clears a path result when the simulator advances to a new source state", async ({ page }) => {
+  await page.getByLabel("Path to").selectOption("completed");
+  await page.getByRole("button", { name: "Find" }).click();
+  await expect(page.locator(".path-result")).toContainText("PAYMENT_SUCCESS");
+
+  await page.getByRole("button", { name: "PAYMENT_SUCCESS", exact: true }).click();
+  await page.getByLabel("amount *").fill("128");
+  await page.getByLabel("payment_id *").fill("path_state_probe");
+  await page.getByRole("button", { name: "Pass" }).click();
+  await page.getByRole("button", { name: "Run PAYMENT_SUCCESS" }).click();
+
+  await expect(page.locator(".current-state-card span")).toHaveText("paid");
+  await expect(page.locator(".path-result")).toHaveCount(0);
+});
+
 test("persists edits and exports the current valid source", async ({ page }) => {
   const editor = page.getByLabel("Machine definition");
   const source = await editor.inputValue();

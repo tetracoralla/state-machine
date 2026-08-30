@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { PassThrough } from "node:stream";
 
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
@@ -7,6 +8,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 import { largeContextMachine, largeResponseMachine } from "../fixtures.js";
+import {
+  createBoundedStdioTransport,
+  MCP_TRANSPORT_MAX_BUFFER_BYTES,
+} from "../../src/adapters/mcp.js";
 
 const root = resolve(import.meta.dirname, "../..");
 const pluginRoot = resolve(root, "plugins/state-machine");
@@ -29,6 +34,27 @@ describe("built plugin MCP stdio runtime", () => {
 
   afterEach(async () => {
     await client.close();
+  });
+
+  it("closes the stdio carrier before buffering an oversized raw protocol message", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const transport = createBoundedStdioTransport(input, output);
+    const messages: unknown[] = [];
+    let transportError: Error | undefined;
+    transport.onmessage = (message) => messages.push(message);
+    transport.onerror = (error) => {
+      transportError = error;
+    };
+    await transport.start();
+
+    input.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n');
+    input.write(`${" ".repeat(MCP_TRANSPORT_MAX_BUFFER_BYTES + 1)}{}\n`);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(transportError?.message).toContain("ReadBuffer exceeded maximum size");
+    expect(transportError?.message).toContain(String(MCP_TRANSPORT_MAX_BUFFER_BYTES));
+    expect(messages).toHaveLength(1);
   });
 
   it("publishes exactly six direct read-only tools with discoverable schemas", async () => {

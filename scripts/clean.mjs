@@ -3,7 +3,11 @@ import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
-const targets = [resolve(root, "dist"), resolve(root, "plugins/state-machine/server/index.mjs")];
+const targets = [
+  resolve(root, "dist"),
+  resolve(root, "plugins/state-machine/server/index.mjs"),
+  resolve(root, "plugins/state-machine/server/index.mjs.LEGAL.txt"),
+];
 
 export function assertContainedPathHasNoSymlinks(projectRoot, targetPath) {
   const resolvedRoot = realpathSync(projectRoot);
