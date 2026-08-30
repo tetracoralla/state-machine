@@ -5,6 +5,7 @@ const root = process.cwd();
 const failures = [];
 const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 const packageLock = readFileSync(resolve(root, "package-lock.json"), "utf8");
+const packageLockJson = JSON.parse(packageLock);
 const pluginRoot = resolve(root, "plugins/state-machine");
 const pluginJson = JSON.parse(readFileSync(resolve(pluginRoot, ".codex-plugin/plugin.json"), "utf8"));
 const marketplaceJson = JSON.parse(readFileSync(resolve(root, ".agents/plugins/marketplace.json"), "utf8"));
@@ -27,7 +28,15 @@ if (packageJson.name !== "@openadam/state-machine") failures.push("npm package i
 if (packageJson.private !== true) failures.push("package must remain private for GitHub-first distribution");
 if (packageJson.repository?.url !== "git+https://github.com/tetracoralla/state-machine.git") failures.push("repository URL differs");
 if (packageJson.homepage !== "https://github.com/tetracoralla/state-machine#readme") failures.push("homepage URL differs");
-if (packageLock.includes("registry.npmmirror.com")) failures.push("package lock contains a non-canonical registry host");
+const packageLockUsesMirror = Object.values(packageLockJson.packages ?? {}).some((metadata) => {
+  if (!metadata || typeof metadata !== "object" || typeof metadata.resolved !== "string") return false;
+  try {
+    return new URL(metadata.resolved).hostname === "registry.npmmirror.com";
+  } catch {
+    return false;
+  }
+});
+if (packageLockUsesMirror) failures.push("package lock contains a non-canonical registry host");
 if (rootThirdPartyNotices !== pluginThirdPartyNotices) failures.push("root and plugin third-party notices differ");
 if (packageJson.bin?.["state-machine"] !== "./dist/node/adapters/cli.js") failures.push("CLI entry differs");
 if (packageJson.bin?.["state-machine-mcp"] !== "./dist/node/adapters/mcp.js") failures.push("MCP entry differs");
