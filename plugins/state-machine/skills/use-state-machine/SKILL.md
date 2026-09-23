@@ -1,9 +1,19 @@
 ---
 name: use-state-machine
-description: Use the Step Switch tools for concrete finite-state Machine Specs when an event must be accepted or rejected deterministically, a sequence should be simulated without side effects, a path to a state is needed, or a machine needs validation, inspection, or semantic comparison. Do not use for open-ended workflow design or to execute returned effects.
+description: Use Step Switch for concrete state and event reasoning, including while implementing or debugging retries, cancellation, recovery, and other finite-state behavior. Validate or simulate a Machine Spec derived from accepted requirements, decide whether an event is legal, find a path, or compare changed behavior. The kernel does not design an open-ended workflow or execute effects.
 ---
 
 # Use Step Switch
+
+When a construction task involves interacting states, first reuse its existing
+machine or derive a small concrete spec from the accepted behavior. Keep the
+source requirements and unresolved choices alongside it; a guessed transition
+is not a requirement. Use the result to choose or repair the implementation,
+then inspect the real interaction and recovery. A valid spec or successful
+simulation proves only the modeled behavior, not the completeness, visual
+quality, persistence, or actual effects of the product. Do not shrink the task
+to what this finite-state model supports. Skip modeling when it would add more
+work than it removes.
 
 Call the operation that answers the user's task directly:
 

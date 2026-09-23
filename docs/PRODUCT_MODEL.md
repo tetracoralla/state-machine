@@ -11,8 +11,10 @@ reviewable YAML/JSON definition. They edit the source, see its topology, validat
 it, simulate allowed and blocked events, inspect emitted effects, find a route
 to a target state, and import or export the spec.
 
-The Agent user already has a machine and current snapshot. It needs software to
-answer “is this event legal now?”, “what state and context result?”, “what
+The Agent user supplies a machine and current snapshot, reusing an existing
+spec or constructing one from accepted requirements during an authorized
+implementation or diagnosis. The kernel does not perform that authorship.
+It answers “is this event legal now?”, “what state and context result?”, “what
 effects would be requested?”, “what happens across this sequence?”, or “how can
 this state be reached?” without model judgment.
 
