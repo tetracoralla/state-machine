@@ -97,7 +97,7 @@
     "@vitejs/plugin-react": "6.1.0",
     "esbuild": "^0.28.2",
     "happy-dom": "20.11.6",
-    "tsx": "4.23.12",
+    "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "4.1.11"
